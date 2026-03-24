@@ -1,4 +1,4 @@
-# Trackmania2020TitleIdUpdater
+# Trackmania2020MapFixer
 
 This script is used to batch process Trackmania `.Map.Gbx` files in a specified folder (and its subdirectories). It parses each map file, checks its `TitleId`, and if the `TitleId` matches a specific value (`OrbitalDev@falguiere`), it changes it to `TMStadium` and overwrites the original file in-place.
 
@@ -20,26 +20,44 @@ This script relies on the [GBX.NET](https://github.com/BigBang1112/gbx.net) libr
 
 ## Usage
 
-You can run this script using `dotnet-script` or compile it as a standalone executable. 
+Run from the repository root and point to your map folder if needed.
 
-Provide the path to the folder containing your maps as the first argument:
+### command line
 
 ```bash
-# Using dotnet-script
-dotnet script Trackmania2020TitleIdUpdater.cs "C:\Path\To\Your\Map\Folder"
+# show help
+dotnet run .\Trackmania2020MapFixer.cs -- --help
 
-# Alternatively, if compiled to an executable or using `dotnet run` 
-dotnet run Trackmania2020TitleIdUpdater.cs "C:\Path\To\Your\Map\Folder"
+# default: current working directory
+dotnet run .\Trackmania2020MapFixer.cs -- --update-title --convert-platform-maptype
+
+# explicit folder
+dotnet run .\Trackmania2020MapFixer.cs -- --folder "C:\Users\Philipp\Documents\Trackmania2020\Maps" --update-title --convert-platform-maptype
+
+# dry-run mode (no writes)
+dotnet run .\Trackmania2020MapFixer.cs -- --dry-run --update-title --convert-platform-maptype
 ```
 
-## Example Output
+### options
 
-```text
-Saved: C:\Path\To\Your\Map\Folder\Campaign1\Map1.Map.Gbx
-Failed to process C:\Path\To\Your\Map\Folder\CorruptMap.Map.Gbx: Exception message here
-Saved: C:\Path\To\Your\Map\Folder\Campaign1\Map2.Map.Gbx
+- `--folder`, `-f <path>`: folder to scan (default: current working directory)
+- `--update-title`: change `TitleId` from `OrbitalDev@falguiere` to `TMStadium`
+- `--convert-platform-maptype`: change `MapType` from `TrackMania\\TM_Platform` to `TrackMania\\TM_Race`
+- `--dry-run`: analyze/print changes without saving files
+- `--help`, `-h`: show help
 
-Analysis complete.
-Files analyzed successfully: 15 out of 16
-Title IDs changed: 2
+## What it does
+
+- recursively processes all `*.Map.Gbx` files under given folder
+- applies selected updates based on flags
+- logs per-file success/failure and summary counters
+
+## Required packages
+
+Packages are referenced at the top of the script:
+
+```csharp
+#:package GBX.NET@2.*
+#:package GBX.NET.LZO@2.*
 ```
+

@@ -171,7 +171,7 @@ internal static class MapFixer
 
     private static void PrintUsage()
     {
-        Console.WriteLine("Usage: Trackmania2020MaxFixer [folder] [options]");
+        Console.WriteLine("Usage: Trackmania2020MapFixer [folder] [options]");
         Console.WriteLine("Options:");
         Console.WriteLine("  --folder, -f <path>       Folder containing .Map.Gbx files (default: current exe directory)");
         Console.WriteLine("  --update-title            Enable title ID migration from OrbitalDev@falguiere to TMStadium");
