@@ -1,14 +1,16 @@
 # Trackmania2020MapFixer
 
-This script is used to batch process Trackmania `.Map.Gbx` files in a specified folder (and its subdirectories). It parses each map file, checks its `TitleId`, and if the `TitleId` matches a specific value (`OrbitalDev@falguiere`), it changes it to `TMStadium` and overwrites the original file in-place.
+A command-line utility for batch updating Trackmania `.Map.Gbx` files in a directory tree. It can update title IDs and map types on matching maps, with optional dry-run mode.
 
 ## Features
 
 - Recursively processes all `.Map.Gbx` files in a given directory.
-- Continues processing even if an individual map file fails to parse.
-- Tracks and displays a summary of the analysis at the end:
-  - Total number of files processed successfully.
-  - Number of files that had their `TitleId` changed.
+- Supports changing `TitleId` and `MapType` according to flags.
+- Keeps scanning after parse failures and reports file-level errors.
+- Shows summary counters at end:
+  - Total files scanned
+  - Files modified
+
 
 ## Requirements
 
@@ -32,7 +34,7 @@ dotnet run .\Trackmania2020MapFixer.cs -- --help
 dotnet run .\Trackmania2020MapFixer.cs -- --update-title --convert-platform-maptype
 
 # explicit folder
-dotnet run .\Trackmania2020MapFixer.cs -- --folder "C:\Users\Philipp\Documents\Trackmania2020\Maps" --update-title --convert-platform-maptype
+dotnet run .\Trackmania2020MapFixer.cs -- --folder "C:\Users\Username\Documents\Trackmania2020\Maps" --update-title --convert-platform-maptype
 
 # dry-run mode (no writes)
 dotnet run .\Trackmania2020MapFixer.cs -- --dry-run --update-title --convert-platform-maptype
