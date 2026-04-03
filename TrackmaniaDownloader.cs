@@ -95,8 +95,23 @@ internal static class TrackmaniaDownloader
     private static async Task HandleTrackOfTheDay(TrackmaniaIO tmio)
     {
         Console.WriteLine("\n[Track of the Day]");
-        Console.WriteLine("Enter month offset (0 for current, 1 for last month, etc.): ");
-        if (!int.TryParse(Console.ReadLine(), out var monthOffset)) monthOffset = 0;
+        Console.WriteLine("Enter Year and Month (e.g., 2024 10 or 2024-10) or leave empty for current month:");
+        var dateInput = Console.ReadLine()?.Trim();
+
+        int monthOffset = 0;
+        if (!string.IsNullOrWhiteSpace(dateInput))
+        {
+            var parts = dateInput.Split(new[] { ' ', '-', '/', '.' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2 && int.TryParse(parts[0], out var year) && int.TryParse(parts[1], out var month))
+            {
+                var now = DateTime.UtcNow;
+                monthOffset = (now.Year - year) * 12 + (now.Month - month);
+            }
+            else
+            {
+                Console.WriteLine("Invalid date format. Defaulting to current month.");
+            }
+        }
 
         Console.WriteLine("Which days would you like to download? (e.g., 1, 3-5, 10 or leave empty for all)");
         var dayInput = Console.ReadLine();
