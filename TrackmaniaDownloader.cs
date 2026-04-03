@@ -26,7 +26,8 @@ internal static class TrackmaniaDownloader
             Console.WriteLine("1. Weekly Shorts");
             Console.WriteLine("2. Weekly Grands");
             Console.WriteLine("3. Seasonal Campaigns");
-            Console.WriteLine("4. Track of the Day");
+            Console.WriteLine("4. Club Campaigns");
+            Console.WriteLine("5. Track of the Day");
             Console.WriteLine("Q. Quit");
             Console.Write("Select an option: ");
 
@@ -44,6 +45,10 @@ internal static class TrackmaniaDownloader
                 await HandleSeasonal(tmio);
             }
             else if (choice == "4")
+            {
+                await HandleClub(tmio);
+            }
+            else if (choice == "5")
             {
                 await HandleTrackOfTheDay(tmio);
             }
@@ -100,6 +105,36 @@ internal static class TrackmaniaDownloader
 
             await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir);
         }
+    }
+
+    private static async Task HandleClub(TrackmaniaIO tmio)
+    {
+        Console.WriteLine("\n[Club Campaigns]");
+        Console.Write("Enter Club ID: ");
+        if (!int.TryParse(Console.ReadLine(), out var clubId)) return;
+        Console.Write("Enter Campaign ID: ");
+        if (!int.TryParse(Console.ReadLine(), out var campaignId)) return;
+
+        Console.WriteLine($"Fetching Club Campaign {campaignId} from Club {clubId}...");
+        var fullCampaign = await tmio.GetClubCampaignAsync(clubId, campaignId);
+        if (fullCampaign?.Playlist == null)
+        {
+            Console.WriteLine("Could not retrieve playlist.");
+            return;
+        }
+
+        var clubPart = !string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString();
+        var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
+
+        var downloadDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "Trackmania2020", "Maps", "Downloaded", "Clubs", clubPart, campaignPart);
+
+        var mapsWithPrefix = fullCampaign.Playlist
+            .Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, prefix: $"{(i + 1):D2} - "))
+            .ToList();
+
+        await DownloadMaps(mapsWithPrefix.Select(x => (x.Name, x.Item2, x.Item3)), downloadDir, mapsWithPrefix.Select(x => x.prefix).ToList());
     }
 
     private static async Task HandleSeasonal(TrackmaniaIO tmio)
