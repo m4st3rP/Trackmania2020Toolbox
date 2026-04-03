@@ -154,7 +154,7 @@ internal static class TrackmaniaDownloader
         await DownloadMaps(mapsToDownload, downloadDir);
     }
 
-    private static async Task DownloadMaps(IEnumerable<(string Name, string? FileName, string? FileUrl)> maps, string downloadDir)
+    private static async Task DownloadMaps(IEnumerable<(string Name, string? FileName, string? FileUrl)> maps, string downloadDir, string? fileNamePrefix = null)
     {
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
 
@@ -180,6 +180,8 @@ internal static class TrackmaniaDownloader
 
             // Clean illegal chars
             foreach (var c in Path.GetInvalidFileNameChars()) fileName = fileName.Replace(c, '_');
+
+            if (!string.IsNullOrEmpty(fileNamePrefix)) fileName = fileNamePrefix + fileName;
 
             var filePath = Path.Combine(downloadDir, fileName);
             Console.WriteLine($"Downloading {name}...");
@@ -251,9 +253,9 @@ internal static class TrackmaniaDownloader
 
             var downloadDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "Trackmania2020", "Maps", "Downloaded", "Weekly Grands", weekNum.ToString());
+                "Trackmania2020", "Maps", "Downloaded", "Weekly Grands");
 
-            await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir);
+            await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, $"{weekNum} - ");
         }
     }
 
