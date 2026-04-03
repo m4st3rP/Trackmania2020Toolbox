@@ -1,4 +1,4 @@
-# Trackmania2020MapFixer
+# Trackmania2020Toolbox
 
 A command-line utility for batch updating Trackmania `.Map.Gbx` files in a directory tree. It can update title IDs and map types on matching maps, with optional dry-run mode.
 
