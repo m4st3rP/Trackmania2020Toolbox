@@ -24,7 +24,8 @@ internal static class TrackmaniaDownloader
         {
             Console.WriteLine("\nTrackmania Map Downloader");
             Console.WriteLine("1. Weekly Shorts");
-            Console.WriteLine("2. Track of the Day");
+            Console.WriteLine("2. Weekly Grands");
+            Console.WriteLine("3. Track of the Day");
             Console.WriteLine("Q. Quit");
             Console.Write("Select an option: ");
 
@@ -34,6 +35,10 @@ internal static class TrackmaniaDownloader
                 await HandleWeeklyShorts(tmio);
             }
             else if (choice == "2")
+            {
+                await HandleWeeklyGrands(tmio);
+            }
+            else if (choice == "3")
             {
                 await HandleTrackOfTheDay(tmio);
             }
@@ -59,7 +64,7 @@ internal static class TrackmaniaDownloader
         if (!requestedWeeks.Any()) return;
 
         Console.WriteLine("Fetching available Weekly Shorts campaigns...");
-        var campaigns = await FetchAllWeeklyCampaigns(tmio);
+        var campaigns = await FetchAllWeeklyShortsCampaigns(tmio);
 
         foreach (var weekNum in requestedWeeks)
         {
@@ -209,13 +214,70 @@ internal static class TrackmaniaDownloader
         return result.OrderBy(n => n).ToList();
     }
 
-    private static async Task<List<CampaignItem>> FetchAllWeeklyCampaigns(TrackmaniaIO tmio)
+    private static async Task HandleWeeklyGrands(TrackmaniaIO tmio)
+    {
+        Console.WriteLine("\n[Weekly Grands]");
+        Console.WriteLine("Which weeks would you like to download? (e.g., 68, 65-67, 60, 62)");
+        var input = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(input)) return;
+
+        var requestedWeeks = ParseNumbers(input);
+        if (!requestedWeeks.Any()) return;
+
+        Console.WriteLine("Fetching available Weekly Grands campaigns...");
+        var campaigns = await FetchAllWeeklyGrandsCampaigns(tmio);
+
+        foreach (var weekNum in requestedWeeks)
+        {
+            var weekName = $"Week Grand {weekNum}";
+            var campaignItem = campaigns.FirstOrDefault(c =>
+            {
+                var name = c.Name;
+                return System.Text.RegularExpressions.Regex.IsMatch(name, $@"\bWeek Grand 0*{weekNum}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            });
+
+            if (campaignItem == null)
+            {
+                Console.WriteLine($"Error: Could not find campaign for {weekName}. Skipping.");
+                continue;
+            }
+
+            var fullCampaign = await tmio.GetWeeklyGrandCampaignAsync(campaignItem.Id);
+            if (fullCampaign?.Playlist == null)
+            {
+                Console.WriteLine($"Could not retrieve playlist for {weekName}.");
+                continue;
+            }
+
+            var downloadDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "Trackmania2020", "Maps", "Downloaded", "Weekly Grands", weekNum.ToString());
+
+            await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir);
+        }
+    }
+
+    private static async Task<List<CampaignItem>> FetchAllWeeklyShortsCampaigns(TrackmaniaIO tmio)
     {
         var allCampaigns = new List<CampaignItem>();
         int page = 0, pageCount = 1;
         while (page < pageCount)
         {
             var response = await tmio.GetWeeklyShortCampaignsAsync(page);
+            if (response.Campaigns != null) allCampaigns.AddRange(response.Campaigns);
+            pageCount = response.PageCount;
+            page++;
+        }
+        return allCampaigns;
+    }
+
+    private static async Task<List<CampaignItem>> FetchAllWeeklyGrandsCampaigns(TrackmaniaIO tmio)
+    {
+        var allCampaigns = new List<CampaignItem>();
+        int page = 0, pageCount = 1;
+        while (page < pageCount)
+        {
+            var response = await tmio.GetWeeklyGrandCampaignsAsync(page);
             if (response.Campaigns != null) allCampaigns.AddRange(response.Campaigns);
             pageCount = response.PageCount;
             page++;
