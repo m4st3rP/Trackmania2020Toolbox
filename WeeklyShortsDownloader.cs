@@ -8,6 +8,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using ManiaAPI.TrackmaniaIO;
+using TmEssentials;
 
 internal static class WeeklyShortsDownloader
 {
@@ -130,8 +131,28 @@ internal static class WeeklyShortsDownloader
 
         foreach (var map in fullCampaign.Playlist)
         {
-            var fileName = map.FileName ?? $"{map.Name}.Map.Gbx";
-            // Clean filename
+            var fileName = map.FileName;
+            if (string.IsNullOrEmpty(fileName))
+            {
+                fileName = map.Name;
+            }
+
+            // Remove color codes and trim whitespace around the name, preserving the extension
+            fileName = TextFormatter.Deformat(fileName);
+            if (fileName.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName.Substring(0, fileName.Length - 8).Trim() + ".Map.Gbx";
+            }
+            else if (fileName.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName.Substring(0, fileName.Length - 4).Trim() + ".Gbx";
+            }
+            else
+            {
+                fileName = fileName.Trim();
+            }
+
+            // Clean filename from illegal characters
             foreach (var c in Path.GetInvalidFileNameChars())
             {
                 fileName = fileName.Replace(c, '_');

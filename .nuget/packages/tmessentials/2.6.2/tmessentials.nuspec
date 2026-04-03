@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>TmEssentials</id>
+    <version>2.6.2</version>
+    <authors>BigBang1112</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <icon>logo_icon_outline.png</icon>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/BigBang1112/tm-essentials</projectUrl>
+    <description>A .NET library providing essential Trackmania features, like the time or text formatting.</description>
+    <copyright>Copyright (c) 2026 Petr Pivoňka</copyright>
+    <tags>trackmania, tm, essentials, maniaplanet, time, account, formatting</tags>
+    <repository type="git" url="https://github.com/BigBang1112/tm-essentials" commit="eae837d15e14ad40e6eaa0199255018208fc9335" />
+    <dependencies>
+      <group targetFramework=".NETFramework4.6.2">
+        <dependency id="System.Memory" version="4.6.3" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework="net8.0" />
+      <group targetFramework="net9.0" />
+      <group targetFramework="net10.0" />
+      <group targetFramework=".NETStandard2.0">
+        <dependency id="System.Memory" version="4.6.3" exclude="Build,Analyzers" />
+      </group>
+      <group targetFramework=".NETStandard2.1" />
+    </dependencies>
+  </metadata>
+</package>
