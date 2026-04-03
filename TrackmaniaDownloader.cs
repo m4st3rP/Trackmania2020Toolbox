@@ -102,10 +102,10 @@ internal static class TrackmaniaDownloader
         if (!string.IsNullOrWhiteSpace(dateInput))
         {
             var parts = dateInput.Split(new[] { ' ', '-', '/', '.' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2 && int.TryParse(parts[0], out var year) && int.TryParse(parts[1], out var month))
+            if (parts.Length == 2 && int.TryParse(parts[0], out var inputYear) && int.TryParse(parts[1], out var inputMonth))
             {
                 var now = DateTime.UtcNow;
-                monthOffset = (now.Year - year) * 12 + (now.Month - month);
+                monthOffset = (now.Year - inputYear) * 12 + (now.Month - inputMonth);
             }
             else
             {
