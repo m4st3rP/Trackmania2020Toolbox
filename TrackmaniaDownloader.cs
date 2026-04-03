@@ -63,7 +63,7 @@ internal static class TrackmaniaDownloader
 
         foreach (var weekNum in requestedWeeks)
         {
-            var weekSearch = $"Week {weekNum}";
+            var weekName = $"Week {weekNum}";
             var campaignItem = campaigns.FirstOrDefault(c =>
             {
                 var name = c.Name;
@@ -88,7 +88,7 @@ internal static class TrackmaniaDownloader
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "Trackmania2020", "Maps", "Downloaded", "Weekly Shorts", weekNum.ToString());
 
-            await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, m.FileName, m.FileUrl)), downloadDir);
+            await DownloadMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir);
         }
     }
 
@@ -129,7 +129,7 @@ internal static class TrackmaniaDownloader
         }
 
         Console.WriteLine($"Downloading TOTD for {year}-{month:D2}...");
-        var mapsToDownload = totdDays.Select(d => (d.Map.Name, d.Map.FileName, d.Map.FileUrl));
+        var mapsToDownload = totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl));
 
         await DownloadMaps(mapsToDownload, downloadDir);
     }
