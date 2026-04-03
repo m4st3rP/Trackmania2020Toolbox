@@ -63,8 +63,13 @@ internal static class TrackmaniaDownloader
 
         foreach (var weekNum in requestedWeeks)
         {
-            var weekName = $"Week {weekNum}";
-            var campaignItem = campaigns.FirstOrDefault(c => c.Name.Contains(weekName, StringComparison.OrdinalIgnoreCase));
+            var weekSearch = $"Week {weekNum}";
+            var campaignItem = campaigns.FirstOrDefault(c =>
+            {
+                var name = c.Name;
+                // Match "Week X" or "Week 0X" exactly within the name to avoid "Week 6" matching "Week 60"
+                return System.Text.RegularExpressions.Regex.IsMatch(name, $@"\bWeek 0*{weekNum}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            });
 
             if (campaignItem == null)
             {
@@ -93,6 +98,10 @@ internal static class TrackmaniaDownloader
         Console.WriteLine("Enter month offset (0 for current, 1 for last month, etc.): ");
         if (!int.TryParse(Console.ReadLine(), out var monthOffset)) monthOffset = 0;
 
+        Console.WriteLine("Which days would you like to download? (e.g., 1, 3-5, 10 or leave empty for all)");
+        var dayInput = Console.ReadLine();
+        var requestedDays = string.IsNullOrWhiteSpace(dayInput) ? new List<int>() : ParseNumbers(dayInput);
+
         Console.WriteLine("Fetching TOTD data...");
         var response = await tmio.GetTrackOfTheDaysAsync(monthOffset);
         if (response?.Days == null || !response.Days.Any())
@@ -107,10 +116,20 @@ internal static class TrackmaniaDownloader
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "Trackmania2020", "Maps", "Downloaded", "Track of the Day", year.ToString(), month.ToString("D2"));
 
+        var totdDays = response.Days.Where(d => d.Map != null);
+        if (requestedDays.Any())
+        {
+            totdDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay));
+        }
+
+        if (!totdDays.Any())
+        {
+            Console.WriteLine("No matching days found in this month.");
+            return;
+        }
+
         Console.WriteLine($"Downloading TOTD for {year}-{month:D2}...");
-        var mapsToDownload = response.Days
-            .Where(d => d.Map != null)
-            .Select(d => (d.Map.Name, d.Map.FileName, d.Map.FileUrl));
+        var mapsToDownload = totdDays.Select(d => (d.Map.Name, d.Map.FileName, d.Map.FileUrl));
 
         await DownloadMaps(mapsToDownload, downloadDir);
     }
