@@ -1,65 +1,65 @@
 # Trackmania2020Toolbox
 
-A command-line utility for batch updating Trackmania `.Map.Gbx` files in a directory tree. It can update title IDs and map types on matching maps, with optional dry-run mode.
+A command-line utility for downloading Trackmania 2020 maps and batch updating `.Map.Gbx` files. It can download maps from various campaigns and automatically apply fixes to `TitleId` and `MapType`.
 
 ## Features
 
-- Recursively processes all `.Map.Gbx` files in a given directory.
-- Supports changing `TitleId` and `MapType` according to flags.
-- Keeps scanning after parse failures and reports file-level errors.
-- Shows summary counters at end:
-  - Total files scanned
-  - Files modified
-
+- **Downloader**:
+  - Weekly Shorts & Weekly Grands
+  - Seasonal Campaigns
+  - Club Campaigns
+  - Track of the Day
+- **Fixer**:
+  - Recursively processes `.Map.Gbx` files.
+  - Updates `TitleId` from `OrbitalDev@falguiere` to `TMStadium` by default.
+  - Converts `MapType` from `TM_Platform` to `TM_Race` by default.
+  - Runs automatically on downloaded maps.
+  - Batch mode for existing folders.
+  - Dry-run mode to preview changes.
 
 ## Requirements
 
-This script relies on the [GBX.NET](https://github.com/BigBang1112/gbx.net) library to parse and save Trackmania map files. The required packages are referenced at the top of the file:
+This script relies on several libraries referenced at the top of the file:
 ```csharp
 #:package GBX.NET@2.*
 #:package GBX.NET.LZO@2.*
+#:package ManiaAPI.TrackmaniaIO@2.*
+#:package TmEssentials@2.*
 ```
 
 ## Usage
 
-Run from the repository root and point to your map folder if needed.
-
-### command line
+Run from the repository root:
 
 ```bash
-# show help
-dotnet run .\Trackmania2020MapFixer.cs -- --help
+# Show help
+dotnet run Trackmania2020Toolbox.cs -- --help
 
-# default: current working directory
-dotnet run .\Trackmania2020MapFixer.cs -- --update-title --convert-platform-maptype
+# Download Weekly Shorts (week 68)
+dotnet run Trackmania2020Toolbox.cs -- --weekly-shorts 68
 
-# explicit folder
-dotnet run .\Trackmania2020MapFixer.cs -- --folder "C:\Users\Username\Documents\Trackmania2020\Maps" --update-title --convert-platform-maptype
+# Download TOTD for Oct 2024 (days 1 to 5)
+dotnet run Trackmania2020Toolbox.cs -- --totd 2024-10 1-5
 
-# dry-run mode (no writes)
-dotnet run .\Trackmania2020MapFixer.cs -- --dry-run --update-title --convert-platform-maptype
+# Batch fix an existing folder without changing TitleId
+dotnet run Trackmania2020Toolbox.cs -- --folder "C:\Maps" --skip-title-update
+
+# Dry-run batch fix
+dotnet run Trackmania2020Toolbox.cs -- --dry-run
 ```
 
-### options
+### Options
 
-- `--folder`, `-f <path>`: folder to scan (default: current working directory)
-- `--update-title`: change `TitleId` from `OrbitalDev@falguiere` to `TMStadium`
-- `--convert-platform-maptype`: change `MapType` from `TrackMania\\TM_Platform` to `TrackMania\\TM_Race`
-- `--dry-run`: analyze/print changes without saving files
-- `--help`, `-h`: show help
+#### Download Options
+- `--weekly-shorts <weeks>`: (e.g., "68, 70-72")
+- `--weekly-grands <weeks>`: (e.g., "65")
+- `--seasonal <name>`: (e.g., "Winter 2024")
+- `--club <clubId>/<campId>`: (e.g., "123/456")
+- `--totd <YYYY-MM> [days]`: (e.g., "2024-10" "1-5")
 
-## What it does
-
-- recursively processes all `*.Map.Gbx` files under given folder
-- applies selected updates based on flags
-- logs per-file success/failure and summary counters
-
-## Required packages
-
-Packages are referenced at the top of the script:
-
-```csharp
-#:package GBX.NET@2.*
-#:package GBX.NET.LZO@2.*
-```
-
+#### Fixer Options
+- `--folder`, `-f <path>`: Folder for batch fixing (default: `Documents\Trackmania2020\Maps`)
+- `--skip-title-update`: Do not update `TitleId`
+- `--skip-maptype-convert`: Do not convert `MapType`
+- `--dry-run`: Show changes without saving
+- `--help`, `-h`: Show help message
