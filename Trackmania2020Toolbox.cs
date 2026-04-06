@@ -58,15 +58,15 @@ internal static class Trackmania2020Toolbox
             actionTaken = true;
         }
 
-        if (config.Club != null)
+        if (config.ClubCampaign != null)
         {
-            await HandleClub(tmio, config.Club, config);
+            await HandleClubCampaign(tmio, config.ClubCampaign, config);
             actionTaken = true;
         }
 
         if (config.TotdDate != null)
         {
-            await HandleTrackOfTheDay(tmio, config.TotdDate, config.TotdDays, config);
+            await HandleTrackOfTheDay(tmio, config.TotdDate, config);
             actionTaken = true;
         }
 
@@ -82,34 +82,38 @@ internal static class Trackmania2020Toolbox
         string? weeklyShorts = null;
         string? weeklyGrands = null;
         string? seasonal = null;
-        string? club = null;
+        string? clubCampaign = null;
         string? totdDate = null;
-        string? totdDays = null;
         string folder = DefaultFixerFolder;
         bool explicitFolder = false;
         bool skipTitleUpdate = false;
         bool skipMapTypeConvert = false;
         bool dryRun = false;
+        bool force = false;
+        bool interactive = true;
 
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i].ToLowerInvariant())
             {
                 case "--weekly-shorts":
-                    if (i + 1 < args.Length) weeklyShorts = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) weeklyShorts = args[++i];
+                    else weeklyShorts = "latest";
                     break;
                 case "--weekly-grands":
-                    if (i + 1 < args.Length) weeklyGrands = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) weeklyGrands = args[++i];
+                    else weeklyGrands = "latest";
                     break;
                 case "--seasonal":
-                    if (i + 1 < args.Length) seasonal = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) seasonal = args[++i];
+                    else seasonal = "latest";
                     break;
-                case "--club":
-                    if (i + 1 < args.Length) club = args[++i];
+                case "--club-campaign":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) clubCampaign = args[++i];
                     break;
                 case "--totd":
-                    if (i + 1 < args.Length) totdDate = args[++i];
-                    if (i + 1 < args.Length && !args[i+1].StartsWith("--")) totdDays = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) totdDate = args[++i];
+                    else totdDate = "latest";
                     break;
                 case "--folder":
                 case "-f":
@@ -128,12 +132,18 @@ internal static class Trackmania2020Toolbox
                 case "--dry-run":
                     dryRun = true;
                     break;
+                case "--force":
+                    force = true;
+                    break;
+                case "--non-interactive":
+                    interactive = false;
+                    break;
             }
         }
 
         return new Config(
-            weeklyShorts, weeklyGrands, seasonal, club, totdDate, totdDays,
-            folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun
+            weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate,
+            folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive
         );
     }
 
@@ -142,12 +152,15 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("Trackmania 2020 Toolbox");
         Console.WriteLine("Usage: dotnet run Trackmania2020Toolbox.cs -- [options]");
         Console.WriteLine("\nDownload Options:");
-        Console.WriteLine("  --weekly-shorts <weeks>    Download Weekly Shorts (e.g., \"68, 70-72\")");
-        Console.WriteLine("  --weekly-grands <weeks>    Download Weekly Grands (e.g., \"65\")");
-        Console.WriteLine("  --seasonal <name>          Download Seasonal Campaign (e.g., \"Winter 2024\")");
-        Console.WriteLine("  --club <clubId>/<campId>   Download Club Campaign (e.g., \"123/456\")");
-        Console.WriteLine("  --totd <YYYY-MM> [days]    Download Track of the Day (e.g., \"2024-10\" \"1-5\")");
-        Console.WriteLine("\nFixer Options (applied to downloads by default):");
+        Console.WriteLine("  --weekly-shorts [weeks]    Download Weekly Shorts (e.g., \"68, 70-72\"). Defaults to latest.");
+        Console.WriteLine("  --weekly-grands [weeks]    Download Weekly Grands (e.g., \"65\"). Defaults to latest.");
+        Console.WriteLine("  --seasonal [name]          Download Seasonal Campaign (e.g., \"Winter 2024\"). Defaults to latest.");
+        Console.WriteLine("  --club-campaign <search|id> Download Club Campaign. Searches by name if not <clubId>/<campId>.");
+        Console.WriteLine("  --totd [date]              Download Track of the Day. Defaults to today.");
+        Console.WriteLine("                             Formats: YYYY-MM, YYYY-MM-DD, YYYY-MM-DD-DD (range)");
+        Console.WriteLine("\nOther Options:");
+        Console.WriteLine("  --force                    Overwrite existing files");
+        Console.WriteLine("  --non-interactive          Disable interactive mode (don't ask for selection)");
         Console.WriteLine("  --folder, -f <path>        Folder for batch fixing (default: Documents\\Trackmania2020\\Maps)");
         Console.WriteLine("  --skip-title-update        Do not update TitleId (OrbitalDev@falguiere -> TMStadium)");
         Console.WriteLine("  --skip-maptype-convert     Do not convert MapType (TM_Platform -> TM_Race)");
@@ -156,63 +169,90 @@ internal static class Trackmania2020Toolbox
     }
 
     private record Config(
-        string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? Club, string? TotdDate, string? TotdDays,
-        string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun
+        string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? TotdDate,
+        string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun,
+        bool ForceOverwrite, bool Interactive
     );
 
     // --- Downloader Logic ---
 
     private static async Task HandleWeeklyShorts(TrackmaniaIO tmio, string input, Config config)
     {
-        var requestedWeeks = ParseNumbers(input);
-        if (!requestedWeeks.Any()) return;
-
         Console.WriteLine("Fetching available Weekly Shorts campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetWeeklyShortCampaignsAsync(p));
 
+        var requestedWeeks = input.Equals("latest", StringComparison.OrdinalIgnoreCase)
+            ? new List<int> { -1 }
+            : ParseNumbers(input);
+
+        if (!requestedWeeks.Any()) return;
+
         foreach (var weekNum in requestedWeeks)
         {
-            var weekName = $"Week {weekNum}";
-            var campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek 0*{weekNum}\b", RegexOptions.IgnoreCase));
+            CampaignItem? campaignItem;
+            if (weekNum == -1)
+            {
+                campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+            }
+            else
+            {
+                campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek 0*{weekNum}\b", RegexOptions.IgnoreCase));
+            }
 
             if (campaignItem == null)
             {
-                Console.WriteLine($"Error: Could not find campaign for {weekName}. Skipping.");
+                Console.WriteLine($"Error: Could not find campaign {(weekNum == -1 ? "latest" : $"Week {weekNum}")}. Skipping.");
                 continue;
             }
 
             var fullCampaign = await tmio.GetWeeklyShortCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) continue;
 
-            var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Shorts", weekNum.ToString());
+            var weekIdStr = weekNum == -1 ? Regex.Match(campaignItem.Name, @"\bWeek 0*(\d+)\b", RegexOptions.IgnoreCase).Groups[1].Value : weekNum.ToString();
+            if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
+
+            var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Shorts", weekIdStr);
             await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, config);
         }
     }
 
     private static async Task HandleWeeklyGrands(TrackmaniaIO tmio, string input, Config config)
     {
-        var requestedWeeks = ParseNumbers(input);
-        if (!requestedWeeks.Any()) return;
-
         Console.WriteLine("Fetching available Weekly Grands campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetWeeklyGrandCampaignsAsync(p));
 
+        var requestedWeeks = input.Equals("latest", StringComparison.OrdinalIgnoreCase)
+            ? new List<int> { -1 }
+            : ParseNumbers(input);
+
+        if (!requestedWeeks.Any()) return;
+
         foreach (var weekNum in requestedWeeks)
         {
-            var weekName = $"Week Grand {weekNum}";
-            var campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek Grand 0*{weekNum}\b", RegexOptions.IgnoreCase));
+            CampaignItem? campaignItem;
+            if (weekNum == -1)
+            {
+                campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+            }
+            else
+            {
+                campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek Grand 0*{weekNum}\b", RegexOptions.IgnoreCase));
+            }
 
             if (campaignItem == null)
             {
-                Console.WriteLine($"Error: Could not find campaign for {weekName}. Skipping.");
+                Console.WriteLine($"Error: Could not find campaign {(weekNum == -1 ? "latest" : $"Week Grand {weekNum}")}. Skipping.");
                 continue;
             }
 
             var fullCampaign = await tmio.GetWeeklyGrandCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) continue;
 
+            var weekIdStr = weekNum == -1 ? Regex.Match(campaignItem.Name, @"\bWeek Grand 0*(\d+)\b", RegexOptions.IgnoreCase).Groups[1].Value : weekNum.ToString();
+            if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
+
             var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Grands");
-            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, config, prefix: $"{weekNum} - ");
+            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, config, prefix: $"{weekIdStr} - ");
         }
     }
 
@@ -221,7 +261,16 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("Fetching available Seasonal campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetSeasonalCampaignsAsync(p));
 
-        var campaignItem = campaigns.FirstOrDefault(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+        CampaignItem? campaignItem;
+        if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
+        {
+            campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+        }
+        else
+        {
+            campaignItem = campaigns.FirstOrDefault(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+        }
+
         if (campaignItem == null)
         {
             Console.WriteLine($"Error: Could not find seasonal campaign matching '{input}'.");
@@ -236,15 +285,49 @@ internal static class Trackmania2020Toolbox
         await DownloadAndFixMaps(mapsWithPrefix.Select(x => (x.Name, x.Item2, x.Item3)), downloadDir, config, mapsWithPrefix.Select(x => x.prefix).ToList());
     }
 
-    private static async Task HandleClub(TrackmaniaIO tmio, string input, Config config)
+    private static async Task HandleClubCampaign(TrackmaniaIO tmio, string input, Config config)
     {
+        int clubId, campaignId;
         var parts = input.Split('/');
-        if (parts.Length != 2 || !int.TryParse(parts[0], out var clubId) || !int.TryParse(parts[1], out var campaignId))
+        if (parts.Length == 2 && int.TryParse(parts[0], out clubId) && int.TryParse(parts[1], out campaignId))
         {
-            Console.WriteLine("Invalid club format. Use <clubId>/<campaignId>.");
-            return;
+            await DownloadClubCampaign(tmio, clubId, campaignId, config);
         }
+        else
+        {
+            Console.WriteLine($"Searching for club campaigns matching '{input}'...");
+            var campaigns = await FetchAllCampaigns(p => tmio.GetClubCampaignsAsync(p));
+            var matches = campaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
 
+            if (matches.Count == 0)
+            {
+                Console.WriteLine("No matching club campaigns found.");
+            }
+            else if (matches.Count == 1 || !config.Interactive)
+            {
+                var match = matches[0];
+                Console.WriteLine($"Found: {match.Name} (ID: {match.ClubId}/{match.Id})");
+                await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
+            }
+            else
+            {
+                Console.WriteLine("\nMultiple campaigns found:");
+                for (int i = 0; i < matches.Count; i++)
+                {
+                    Console.WriteLine($"{i + 1}: {matches[i].Name} (ID: {matches[i].ClubId}/{matches[i].Id})");
+                }
+                Console.Write("\nSelect a campaign number (or 0 to cancel): ");
+                if (int.TryParse(Console.ReadLine(), out var choice) && choice > 0 && choice <= matches.Count)
+                {
+                    var match = matches[choice - 1];
+                    await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
+                }
+            }
+        }
+    }
+
+    private static async Task DownloadClubCampaign(TrackmaniaIO tmio, int clubId, int campaignId, Config config)
+    {
         var fullCampaign = await tmio.GetClubCampaignAsync(clubId, campaignId);
         if (fullCampaign?.Playlist == null) return;
 
@@ -256,18 +339,50 @@ internal static class Trackmania2020Toolbox
         await DownloadAndFixMaps(mapsWithPrefix.Select(x => (x.Name, x.Item2, x.Item3)), downloadDir, config, mapsWithPrefix.Select(x => x.prefix).ToList());
     }
 
-    private static async Task HandleTrackOfTheDay(TrackmaniaIO tmio, string dateInput, string? dayInput, Config config)
+    private static async Task HandleTrackOfTheDay(TrackmaniaIO tmio, string dateInput, Config config)
     {
-        int monthOffset = 0;
-        var dateParts = dateInput.Split(new[] { '-', '/', ' ', '.' }, StringSplitOptions.RemoveEmptyEntries);
-        if (dateParts.Length == 2 && int.TryParse(dateParts[0], out var year) && int.TryParse(dateParts[1], out var month))
+        var now = DateTime.UtcNow;
+        int targetYear = now.Year;
+        int targetMonth = now.Month;
+        var requestedDays = new List<int>();
+
+        if (dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
-            var now = DateTime.UtcNow;
-            monthOffset = (now.Year - year) * 12 + (now.Month - month);
+            requestedDays.Add(now.Day);
+        }
+        else
+        {
+            var parts = dateInput.Split(new[] { '-', '/', ' ', '.' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+            {
+                if (int.TryParse(parts[0], out var y) && int.TryParse(parts[1], out var m))
+                {
+                    targetYear = y;
+                    targetMonth = m;
+
+                    if (parts.Length == 2)
+                    {
+                        // Whole month: requestedDays stays empty, we'll handle it later
+                    }
+                    else if (parts.Length == 3)
+                    {
+                        // Single day: YYYY-MM-DD
+                        if (int.TryParse(parts[2], out var d)) requestedDays.Add(d);
+                    }
+                    else if (parts.Length == 4)
+                    {
+                        // Range: YYYY-MM-DD-DD
+                        if (int.TryParse(parts[2], out var dStart) && int.TryParse(parts[3], out var dEnd))
+                        {
+                            for (int d = Math.Min(dStart, dEnd); d <= Math.Max(dStart, dEnd); d++)
+                                requestedDays.Add(d);
+                        }
+                    }
+                }
+            }
         }
 
-        var requestedDays = string.IsNullOrWhiteSpace(dayInput) ? new List<int>() : ParseNumbers(dayInput);
-
+        int monthOffset = (now.Year - targetYear) * 12 + (now.Month - targetMonth);
         var response = await tmio.GetTrackOfTheDaysAsync(monthOffset);
         if (response?.Days == null) return;
 
@@ -283,6 +398,8 @@ internal static class Trackmania2020Toolbox
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
 
         var mapList = maps.ToList();
+        Console.WriteLine($"Processing {mapList.Count} maps...");
+
         for (int i = 0; i < mapList.Count; i++)
         {
             var (name, rawFileName, url) = mapList[i];
@@ -300,21 +417,29 @@ internal static class Trackmania2020Toolbox
             else if (!string.IsNullOrEmpty(prefix)) fileName = prefix + fileName;
 
             var filePath = Path.Combine(downloadDir, fileName);
-            Console.WriteLine($"Downloading {name}...");
+            Console.Write($"[{i + 1}/{mapList.Count}] {name}... ");
+
+            if (File.Exists(filePath) && !config.ForceOverwrite)
+            {
+                Console.WriteLine("Skipped (already exists)");
+                continue;
+            }
+
             try
             {
                 var fileData = await HttpClient.GetByteArrayAsync(url);
                 await File.WriteAllBytesAsync(filePath, fileData);
-                Console.WriteLine($"Saved to {filePath}");
+                Console.Write("Downloaded and ");
 
                 // Fix the map immediately
-                ProcessFile(filePath, config);
+                if (ProcessFile(filePath, config)) Console.WriteLine("Fixed.");
+                else Console.WriteLine("Saved.");
 
                 await Task.Delay(1000);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to process {name}: {ex.Message}");
+                Console.WriteLine($"\n  Failed: {ex.Message}");
             }
         }
     }
