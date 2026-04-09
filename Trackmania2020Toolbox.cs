@@ -205,6 +205,8 @@ internal static class Trackmania2020Toolbox
                 continue;
             }
 
+            Console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+
             var fullCampaign = await tmio.GetWeeklyShortCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) continue;
 
@@ -245,6 +247,8 @@ internal static class Trackmania2020Toolbox
                 continue;
             }
 
+            Console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+
             var fullCampaign = await tmio.GetWeeklyGrandCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) continue;
 
@@ -277,6 +281,8 @@ internal static class Trackmania2020Toolbox
             return;
         }
 
+        Console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+
         var fullCampaign = await tmio.GetSeasonalCampaignAsync(campaignItem.Id);
         if (fullCampaign?.Playlist == null) return;
 
@@ -306,7 +312,7 @@ internal static class Trackmania2020Toolbox
             else if (matches.Count == 1 || !config.Interactive)
             {
                 var match = matches[0];
-                Console.WriteLine($"Found: {match.Name} (ID: {match.ClubId}/{match.Id})");
+                Console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} (ID: {match.ClubId}/{match.Id})");
                 await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
             }
             else
@@ -314,7 +320,7 @@ internal static class Trackmania2020Toolbox
                 Console.WriteLine("\nMultiple campaigns found:");
                 for (int i = 0; i < matches.Count; i++)
                 {
-                    Console.WriteLine($"{i + 1}: {matches[i].Name} (ID: {matches[i].ClubId}/{matches[i].Id})");
+                    Console.WriteLine($"{i + 1}: {TextFormatter.Deformat(matches[i].Name)} (ID: {matches[i].ClubId}/{matches[i].Id})");
                 }
                 Console.Write("\nSelect a campaign number (or 0 to cancel): ");
                 if (int.TryParse(Console.ReadLine(), out var choice) && choice > 0 && choice <= matches.Count)
@@ -406,6 +412,7 @@ internal static class Trackmania2020Toolbox
             if (string.IsNullOrEmpty(url)) continue;
 
             var fileName = rawFileName ?? name;
+            var deformattedName = TextFormatter.Deformat(name);
             fileName = TextFormatter.Deformat(fileName);
             if (fileName.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase)) fileName = fileName.Substring(0, fileName.Length - 8).Trim() + ".Map.Gbx";
             else if (fileName.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase)) fileName = fileName.Substring(0, fileName.Length - 4).Trim() + ".Gbx";
@@ -417,7 +424,7 @@ internal static class Trackmania2020Toolbox
             else if (!string.IsNullOrEmpty(prefix)) fileName = prefix + fileName;
 
             var filePath = Path.Combine(downloadDir, fileName);
-            Console.Write($"[{i + 1}/{mapList.Count}] {name}... ");
+            Console.Write($"[{i + 1}/{mapList.Count}] {deformattedName}... ");
 
             if (File.Exists(filePath) && !config.ForceOverwrite)
             {
@@ -529,11 +536,14 @@ internal static class Trackmania2020Toolbox
 
         if (changed)
         {
-            if (cfg.DryRun) Console.WriteLine($"  [Dry Run] Would update: {Path.GetFileName(filePath)}");
+            var fileName = Path.GetFileName(filePath);
+            var deformattedFileName = TextFormatter.Deformat(fileName);
+
+            if (cfg.DryRun) Console.WriteLine($"  [Dry Run] Would update: {deformattedFileName}");
             else
             {
                 gbx.Save(filePath);
-                Console.WriteLine($"  Updated: {Path.GetFileName(filePath)}");
+                Console.WriteLine($"  Updated: {deformattedFileName}");
             }
         }
 
