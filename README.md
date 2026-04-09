@@ -1,5 +1,7 @@
 # Trackmania2020Toolbox
 
+*Disclaimer: This code was mostly written by an AI and has not been thoroughly checked by a human.*
+
 A command-line utility for downloading Trackmania 2020 maps and batch updating `.Map.Gbx` files. It can download maps from various campaigns and automatically apply fixes to `TitleId` and `MapType`.
 
 ## Features
@@ -58,7 +60,7 @@ dotnet run Trackmania2020Toolbox.cs -- --dry-run
 - `--totd <YYYY-MM> [days]`: (e.g., "2024-10" "1-5")
 
 #### Fixer Options
-- `--folder`, `-f <path>`: Folder for batch fixing (default: `Documents\Trackmania2020\Maps`)
+- `--folder`, `-f <path>`: Folder for batch fixing (default: `Documents\Trackmania2020\Maps\Toolbox`)
 - `--skip-title-update`: Do not update `TitleId`
 - `--skip-maptype-convert`: Do not convert `MapType`
 - `--dry-run`: Show changes without saving
