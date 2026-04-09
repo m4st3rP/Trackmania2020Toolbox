@@ -214,7 +214,7 @@ internal static class Trackmania2020Toolbox
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
             var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Shorts", weekIdStr);
-            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, config);
+            await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
         }
     }
 
@@ -256,7 +256,7 @@ internal static class Trackmania2020Toolbox
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
             var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Grands");
-            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl)), downloadDir, config, prefix: $"{weekIdStr} - ");
+            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{weekIdStr} - ")), downloadDir, config);
         }
     }
 
@@ -287,8 +287,7 @@ internal static class Trackmania2020Toolbox
         if (fullCampaign?.Playlist == null) return;
 
         var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Seasonal", campaignItem.Name);
-        var mapsWithPrefix = fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, prefix: $"{(i + 1):D2} - ")).ToList();
-        await DownloadAndFixMaps(mapsWithPrefix.Select(x => (x.Name, x.Item2, x.Item3)), downloadDir, config, mapsWithPrefix.Select(x => x.prefix).ToList());
+        await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
     }
 
     private static async Task HandleClubCampaign(TrackmaniaIO tmio, string input, Config config)
@@ -341,8 +340,7 @@ internal static class Trackmania2020Toolbox
         var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
 
         var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Clubs", clubPart, campaignPart);
-        var mapsWithPrefix = fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, prefix: $"{(i + 1):D2} - ")).ToList();
-        await DownloadAndFixMaps(mapsWithPrefix.Select(x => (x.Name, x.Item2, x.Item3)), downloadDir, config, mapsWithPrefix.Select(x => x.prefix).ToList());
+        await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
     }
 
     private static async Task HandleTrackOfTheDay(TrackmaniaIO tmio, string dateInput, Config config)
@@ -396,10 +394,10 @@ internal static class Trackmania2020Toolbox
         var totdDays = response.Days.Where(d => d.Map != null);
         if (requestedDays.Any()) totdDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay));
 
-        await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl)), downloadDir, config);
+        await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config);
     }
 
-    private static async Task DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl)> maps, string downloadDir, Config config, List<string>? prefixes = null, string? prefix = null)
+    private static async Task DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps, string downloadDir, Config config)
     {
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
 
@@ -408,7 +406,7 @@ internal static class Trackmania2020Toolbox
 
         for (int i = 0; i < mapList.Count; i++)
         {
-            var (name, rawFileName, url) = mapList[i];
+            var (name, rawFileName, url, prefix) = mapList[i];
             if (string.IsNullOrEmpty(url)) continue;
 
             var fileName = rawFileName ?? name;
@@ -420,8 +418,7 @@ internal static class Trackmania2020Toolbox
 
             foreach (var c in Path.GetInvalidFileNameChars()) fileName = fileName.Replace(c, '_');
 
-            if (prefixes != null && i < prefixes.Count) fileName = prefixes[i] + fileName;
-            else if (!string.IsNullOrEmpty(prefix)) fileName = prefix + fileName;
+            if (!string.IsNullOrEmpty(prefix)) fileName = prefix + fileName;
 
             var filePath = Path.Combine(downloadDir, fileName);
             Console.Write($"[{i + 1}/{mapList.Count}] {deformattedName}... ");
