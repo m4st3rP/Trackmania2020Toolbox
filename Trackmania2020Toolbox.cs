@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using GBX.NET;
@@ -37,44 +38,64 @@ internal static class Trackmania2020Toolbox
 
         var config = ParseArguments(args);
 
+        if (config.SetGamePath != null)
+        {
+            SaveGamePath(config.SetGamePath);
+            if (!config.Play && config.WeeklyShorts == null && config.WeeklyGrands == null &&
+                config.Seasonal == null && config.ClubCampaign == null && config.TotdDate == null &&
+                !config.ExplicitFolder && config.ExtraPaths.Count == 0)
+                return;
+        }
+
         using var tmio = new TrackmaniaIO(UserAgent);
 
-        bool actionTaken = false;
+        var mapPaths = new List<string>();
+        bool downloadActionTaken = false;
 
         if (config.WeeklyShorts != null)
         {
-            await HandleWeeklyShorts(tmio, config.WeeklyShorts, config);
-            actionTaken = true;
+            mapPaths.AddRange(await HandleWeeklyShorts(tmio, config.WeeklyShorts, config));
+            downloadActionTaken = true;
         }
 
         if (config.WeeklyGrands != null)
         {
-            await HandleWeeklyGrands(tmio, config.WeeklyGrands, config);
-            actionTaken = true;
+            mapPaths.AddRange(await HandleWeeklyGrands(tmio, config.WeeklyGrands, config));
+            downloadActionTaken = true;
         }
 
         if (config.Seasonal != null)
         {
-            await HandleSeasonal(tmio, config.Seasonal, config);
-            actionTaken = true;
+            mapPaths.AddRange(await HandleSeasonal(tmio, config.Seasonal, config));
+            downloadActionTaken = true;
         }
 
         if (config.ClubCampaign != null)
         {
-            await HandleClubCampaign(tmio, config.ClubCampaign, config);
-            actionTaken = true;
+            mapPaths.AddRange(await HandleClubCampaign(tmio, config.ClubCampaign, config));
+            downloadActionTaken = true;
         }
 
         if (config.TotdDate != null)
         {
-            await HandleTrackOfTheDay(tmio, config.TotdDate, config);
-            actionTaken = true;
+            mapPaths.AddRange(await HandleTrackOfTheDay(tmio, config.TotdDate, config));
+            downloadActionTaken = true;
         }
 
-        // If a folder was explicitly provided or no download actions were taken, run batch fixer
-        if (config.ExplicitFolder || !actionTaken)
+        // Run fixer for explicit folders, extra paths, or if no downloads were done
+        if (config.ExplicitFolder || config.ExtraPaths.Count > 0 || !downloadActionTaken)
         {
-            RunBatchFixer(config);
+            var fixedPaths = RunBatchFixer(config, config.ExtraPaths);
+            // Only add paths that aren't already in the list
+            foreach (var path in fixedPaths)
+            {
+                if (!mapPaths.Contains(path)) mapPaths.Add(path);
+            }
+        }
+
+        if (config.Play)
+        {
+            LaunchGame(mapPaths);
         }
     }
 
@@ -92,6 +113,9 @@ internal static class Trackmania2020Toolbox
         bool dryRun = false;
         bool force = false;
         bool interactive = true;
+        bool play = false;
+        string? setGamePath = null;
+        var extraPaths = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -139,19 +163,32 @@ internal static class Trackmania2020Toolbox
                 case "--non-interactive":
                     interactive = false;
                     break;
+                case "--play":
+                    play = true;
+                    break;
+                case "--set-game-path":
+                    if (i + 1 < args.Length) setGamePath = args[++i];
+                    break;
+                default:
+                    if (!args[i].StartsWith("--"))
+                    {
+                        extraPaths.Add(args[i]);
+                    }
+                    break;
             }
         }
 
         return new Config(
             weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate,
-            folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive
+            folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive,
+            play, setGamePath, extraPaths
         );
     }
 
     private static void PrintUsage()
     {
         Console.WriteLine("Trackmania 2020 Toolbox");
-        Console.WriteLine("Usage: dotnet run Trackmania2020Toolbox.cs -- [options]");
+        Console.WriteLine("Usage: dotnet run Trackmania2020Toolbox.cs -- [options] [maps/folders...]");
         Console.WriteLine("\nDownload Options:");
         Console.WriteLine("  --weekly-shorts [weeks]    Download Weekly Shorts (e.g., \"68, 70-72\"). Defaults to latest.");
         Console.WriteLine("  --weekly-grands [weeks]    Download Weekly Grands (e.g., \"65\"). Defaults to latest.");
@@ -159,6 +196,9 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("  --club-campaign <search|id> Download Club Campaign. Searches by name if not <clubId>/<campId>.");
         Console.WriteLine("  --totd [date]              Download Track of the Day. Defaults to today.");
         Console.WriteLine("                             Formats: YYYY-MM, YYYY-MM-DD, YYYY-MM-DD-DD (range)");
+        Console.WriteLine("\nPlay Options:");
+        Console.WriteLine("  --play                     Launch Trackmania with the maps (requires game running)");
+        Console.WriteLine("  --set-game-path <path>     Set the path to Trackmania.exe in config.toml");
         Console.WriteLine("\nOther Options:");
         Console.WriteLine("  --force                    Overwrite existing files");
         Console.WriteLine("  --non-interactive          Disable interactive mode (don't ask for selection)");
@@ -167,18 +207,99 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("  --skip-maptype-convert     Do not convert MapType (TM_Platform -> TM_Race)");
         Console.WriteLine("  --dry-run                  Show changes without saving");
         Console.WriteLine("  --help, -h                 Show this help message");
+        Console.WriteLine("\nPositional arguments:");
+        Console.WriteLine("  [maps/folders...]          Individual maps or folders to process and/or play");
     }
 
     private record Config(
         string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? TotdDate,
         string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun,
-        bool ForceOverwrite, bool Interactive
+        bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
     );
+
+    private static string? GetGamePath()
+    {
+        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "config.toml");
+        if (!File.Exists(configPath)) return null;
+
+        var lines = File.ReadAllLines(configPath);
+        foreach (var line in lines)
+        {
+            if (line.Trim().StartsWith("game_path", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split('=', 2);
+                if (parts.Length == 2)
+                {
+                    return parts[1].Trim().Trim('"');
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void SaveGamePath(string path)
+    {
+        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "config.toml");
+        try
+        {
+            File.WriteAllText(configPath, $"game_path = \"{path}\"\n");
+            Console.WriteLine($"Game path saved to: {configPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving config: {ex.Message}");
+        }
+    }
+
+    private static void LaunchGame(List<string> mapPaths)
+    {
+        if (mapPaths.Count == 0)
+        {
+            Console.WriteLine("No maps to play.");
+            return;
+        }
+
+        var gamePath = GetGamePath();
+        if (string.IsNullOrEmpty(gamePath))
+        {
+            Console.WriteLine("Error: Trackmania.exe path not set.");
+            Console.WriteLine("Please set it using: dotnet run Trackmania2020Toolbox.cs -- --set-game-path \"C:\\Path\\To\\Trackmania.exe\"");
+            return;
+        }
+
+        if (!File.Exists(gamePath))
+        {
+            Console.WriteLine($"Error: Trackmania.exe not found at {gamePath}");
+            return;
+        }
+
+        Console.WriteLine("\nNote: Trackmania needs to be already running for this to work correctly.");
+
+        var sortedMaps = mapPaths.Distinct().OrderBy(p => p).ToList();
+        if (sortedMaps.Count > 31)
+        {
+            Console.WriteLine($"Warning: Limiting to 31 maps (omitting {sortedMaps.Count - 31}).");
+            sortedMaps = sortedMaps.Take(31).ToList();
+        }
+
+        var arguments = string.Join(" ", sortedMaps.Select(p => $"\"{Path.GetFullPath(p)}\""));
+
+        try
+        {
+            Console.WriteLine($"Launching Trackmania with {sortedMaps.Count} maps...");
+            Process.Start(gamePath, arguments);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error launching game: {ex.Message}");
+        }
+    }
 
     // --- Downloader Logic ---
 
-    private static async Task HandleWeeklyShorts(TrackmaniaIO tmio, string input, Config config)
+    private static async Task<List<string>> HandleWeeklyShorts(TrackmaniaIO tmio, string input, Config config)
     {
+        var downloadedPaths = new List<string>();
         Console.WriteLine("Fetching available Weekly Shorts campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetWeeklyShortCampaignsAsync(p));
 
@@ -215,12 +336,14 @@ internal static class Trackmania2020Toolbox
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
             var downloadDir = Path.Combine(DefaultMapsFolder, "Weekly Shorts", weekIdStr);
-            await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+            downloadedPaths.AddRange(await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config));
         }
+        return downloadedPaths;
     }
 
-    private static async Task HandleWeeklyGrands(TrackmaniaIO tmio, string input, Config config)
+    private static async Task<List<string>> HandleWeeklyGrands(TrackmaniaIO tmio, string input, Config config)
     {
+        var downloadedPaths = new List<string>();
         Console.WriteLine("Fetching available Weekly Grands campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetWeeklyGrandCampaignsAsync(p));
 
@@ -257,11 +380,12 @@ internal static class Trackmania2020Toolbox
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
             var downloadDir = Path.Combine(DefaultMapsFolder, "Weekly Grands");
-            await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{weekIdStr} - ")), downloadDir, config);
+            downloadedPaths.AddRange(await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{weekIdStr} - ")), downloadDir, config));
         }
+        return downloadedPaths;
     }
 
-    private static async Task HandleSeasonal(TrackmaniaIO tmio, string input, Config config)
+    private static async Task<List<string>> HandleSeasonal(TrackmaniaIO tmio, string input, Config config)
     {
         Console.WriteLine("Fetching available Seasonal campaigns...");
         var campaigns = await FetchAllCampaigns(p => tmio.GetSeasonalCampaignsAsync(p));
@@ -289,7 +413,7 @@ internal static class Trackmania2020Toolbox
 
         var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
         var downloadDir = Path.Combine(DefaultMapsFolder, "Seasonal", seasonalFolderName);
-        await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+        return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
     }
 
     private static string FormatSeasonalFolderName(string campaignName)
@@ -312,13 +436,13 @@ internal static class Trackmania2020Toolbox
         return campaignName;
     }
 
-    private static async Task HandleClubCampaign(TrackmaniaIO tmio, string input, Config config)
+    private static async Task<List<string>> HandleClubCampaign(TrackmaniaIO tmio, string input, Config config)
     {
         int clubId, campaignId;
         var parts = input.Split('/');
         if (parts.Length == 2 && int.TryParse(parts[0], out clubId) && int.TryParse(parts[1], out campaignId))
         {
-            await DownloadClubCampaign(tmio, clubId, campaignId, config);
+            return await DownloadClubCampaign(tmio, clubId, campaignId, config);
         }
         else
         {
@@ -334,7 +458,7 @@ internal static class Trackmania2020Toolbox
             {
                 var match = matches[0];
                 Console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} (ID: {match.ClubId}/{match.Id})");
-                await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
+                return await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
             }
             else
             {
@@ -347,25 +471,26 @@ internal static class Trackmania2020Toolbox
                 if (int.TryParse(Console.ReadLine(), out var choice) && choice > 0 && choice <= matches.Count)
                 {
                     var match = matches[choice - 1];
-                    await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
+                    return await DownloadClubCampaign(tmio, match.ClubId ?? 0, match.Id, config);
                 }
             }
         }
+        return new List<string>();
     }
 
-    private static async Task DownloadClubCampaign(TrackmaniaIO tmio, int clubId, int campaignId, Config config)
+    private static async Task<List<string>> DownloadClubCampaign(TrackmaniaIO tmio, int clubId, int campaignId, Config config)
     {
         var fullCampaign = await tmio.GetClubCampaignAsync(clubId, campaignId);
-        if (fullCampaign?.Playlist == null) return;
+        if (fullCampaign?.Playlist == null) return new List<string>();
 
         var clubPart = !string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString();
         var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
 
         var downloadDir = Path.Combine(DefaultMapsFolder, "Clubs", clubPart, campaignPart);
-        await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+        return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
     }
 
-    private static async Task HandleTrackOfTheDay(TrackmaniaIO tmio, string dateInput, Config config)
+    private static async Task<List<string>> HandleTrackOfTheDay(TrackmaniaIO tmio, string dateInput, Config config)
     {
         var now = DateTime.UtcNow;
         int targetYear = now.Year;
@@ -410,19 +535,20 @@ internal static class Trackmania2020Toolbox
 
         int monthOffset = (now.Year - targetYear) * 12 + (now.Month - targetMonth);
         var response = await tmio.GetTrackOfTheDaysAsync(monthOffset);
-        if (response?.Days == null) return;
+        if (response?.Days == null) return new List<string>();
 
         var downloadDir = Path.Combine(DefaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
         var totdDays = response.Days.Where(d => d.Map != null);
         if (requestedDays.Any()) totdDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay));
 
-        await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config);
+        return await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config);
     }
 
-    private static async Task DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps, string downloadDir, Config config)
+    private static async Task<List<string>> DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps, string downloadDir, Config config)
     {
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
 
+        var processedPaths = new List<string>();
         var mapList = maps.ToList();
         Console.WriteLine($"Processing {mapList.Count} maps...");
 
@@ -448,6 +574,7 @@ internal static class Trackmania2020Toolbox
             if (File.Exists(filePath) && !config.ForceOverwrite)
             {
                 Console.WriteLine("Skipped (already exists)");
+                processedPaths.Add(filePath);
                 continue;
             }
 
@@ -461,6 +588,7 @@ internal static class Trackmania2020Toolbox
                 if (ProcessFile(filePath, config)) Console.WriteLine("Fixed.");
                 else Console.WriteLine("Saved.");
 
+                processedPaths.Add(filePath);
                 await Task.Delay(1000);
             }
             catch (Exception ex)
@@ -468,6 +596,7 @@ internal static class Trackmania2020Toolbox
                 Console.WriteLine($"\n  Failed: {ex.Message}");
             }
         }
+        return processedPaths;
     }
 
     private static async Task<List<CampaignItem>> FetchAllCampaigns(Func<int, Task<CampaignCollection>> fetchFunc)
@@ -503,26 +632,47 @@ internal static class Trackmania2020Toolbox
 
     // --- Fixer Logic ---
 
-    private static void RunBatchFixer(Config config)
+    private static List<string> RunBatchFixer(Config config, List<string>? extraFiles = null)
     {
-        if (!config.UpdateTitle && !config.ConvertPlatformMapType) return;
+        var processedPaths = new List<string>();
+        var filesToProcess = new HashSet<string>();
 
-        Console.WriteLine($"\nRunning batch fixer on: {config.FolderPath}");
-        if (!Directory.Exists(config.FolderPath))
+        if (extraFiles != null)
         {
-            Console.WriteLine($"Directory does not exist: {config.FolderPath}");
-            return;
+            foreach (var path in extraFiles)
+            {
+                if (Directory.Exists(path))
+                {
+                    foreach (var file in Directory.GetFiles(path, FilePattern, SearchOption.AllDirectories))
+                        filesToProcess.Add(file);
+                }
+                else if (File.Exists(path))
+                {
+                    filesToProcess.Add(path);
+                }
+            }
         }
 
-        var files = Directory.GetFiles(config.FolderPath, FilePattern, SearchOption.AllDirectories);
-        int analyzed = 0, changed = 0;
+        if (config.ExplicitFolder || (extraFiles == null || extraFiles.Count == 0))
+        {
+            if (Directory.Exists(config.FolderPath))
+            {
+                foreach (var file in Directory.GetFiles(config.FolderPath, FilePattern, SearchOption.AllDirectories))
+                    filesToProcess.Add(file);
+            }
+        }
 
-        foreach (var file in files)
+        if (filesToProcess.Count == 0) return processedPaths;
+
+        Console.WriteLine($"\nAnalyzing {filesToProcess.Count} maps...");
+        int changed = 0;
+
+        foreach (var file in filesToProcess)
         {
             try
             {
                 if (ProcessFile(file, config)) changed++;
-                analyzed++;
+                processedPaths.Add(file);
             }
             catch (Exception ex)
             {
@@ -530,7 +680,10 @@ internal static class Trackmania2020Toolbox
             }
         }
 
-        Console.WriteLine($"\nBatch analysis complete. Analyzed: {analyzed}, Updated: {changed}");
+        if (config.UpdateTitle || config.ConvertPlatformMapType)
+            Console.WriteLine($"\nBatch analysis complete. Analyzed: {filesToProcess.Count}, Updated: {changed}");
+
+        return processedPaths;
     }
 
     private static bool ProcessFile(string filePath, Config cfg)
