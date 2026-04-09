@@ -11,6 +11,10 @@ A command-line utility for downloading Trackmania 2020 maps and batch updating `
   - Seasonal Campaigns
   - Club Campaigns
   - Track of the Day
+- **Player**:
+  - Launch Trackmania with selected maps using the `--play` flag.
+  - Automatically handles downloaded maps or local files/folders.
+  - Requires setting the game executable path once via `--set-game-path`.
 - **Fixer**:
   - Recursively processes `.Map.Gbx` files.
   - Updates `TitleId` from `OrbitalDev@falguiere` to `TMStadium` by default.
@@ -43,6 +47,15 @@ dotnet run Trackmania2020Toolbox.cs -- --weekly-shorts 68
 # Download TOTD for Oct 2024 (days 1 to 5)
 dotnet run Trackmania2020Toolbox.cs -- --totd 2024-10 1-5
 
+# Set the game path (required for --play)
+dotnet run Trackmania2020Toolbox.cs -- --set-game-path "C:\Path\To\Trackmania.exe"
+
+# Download latest Weekly Shorts and play them immediately
+dotnet run Trackmania2020Toolbox.cs -- --weekly-shorts --play
+
+# Play specific local maps
+dotnet run Trackmania2020Toolbox.cs -- --play "C:\Maps\Map1.Map.Gbx" "C:\Maps\Map2.Map.Gbx"
+
 # Batch fix an existing folder without changing TitleId
 dotnet run Trackmania2020Toolbox.cs -- --folder "C:\Maps" --skip-title-update
 
@@ -56,8 +69,12 @@ dotnet run Trackmania2020Toolbox.cs -- --dry-run
 - `--weekly-shorts <weeks>`: (e.g., "68, 70-72")
 - `--weekly-grands <weeks>`: (e.g., "65")
 - `--seasonal <name>`: (e.g., "Winter 2024")
-- `--club <clubId>/<campId>`: (e.g., "123/456")
+- `--club-campaign <search|id>`: (e.g., "123/456")
 - `--totd <YYYY-MM> [days]`: (e.g., "2024-10" "1-5")
+
+#### Play Options
+- `--play`: Launch Trackmania with the maps (requires game running).
+- `--set-game-path <path>`: Set the path to `Trackmania.exe` in `config.toml`.
 
 #### Fixer Options
 - `--folder`, `-f <path>`: Folder for batch fixing (default: `Documents\Trackmania2020\Maps\Toolbox`)
