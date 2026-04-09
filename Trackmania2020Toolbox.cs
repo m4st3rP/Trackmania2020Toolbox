@@ -20,7 +20,8 @@ internal static class Trackmania2020Toolbox
 {
     private static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (contact: trackmania-downloader-script@example.com)";
     private static readonly HttpClient HttpClient = new HttpClient();
-    private static readonly string DefaultFixerFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps");
+    private static readonly string DefaultMapsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+    private static readonly string DefaultFixerFolder = DefaultMapsFolder;
     private const string FilePattern = "*.Map.Gbx";
 
     public static async Task Main(string[] args)
@@ -161,7 +162,7 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("\nOther Options:");
         Console.WriteLine("  --force                    Overwrite existing files");
         Console.WriteLine("  --non-interactive          Disable interactive mode (don't ask for selection)");
-        Console.WriteLine("  --folder, -f <path>        Folder for batch fixing (default: Documents\\Trackmania2020\\Maps)");
+        Console.WriteLine("  --folder, -f <path>        Folder for batch fixing (default: Documents\\Trackmania2020\\Maps\\Toolbox)");
         Console.WriteLine("  --skip-title-update        Do not update TitleId (OrbitalDev@falguiere -> TMStadium)");
         Console.WriteLine("  --skip-maptype-convert     Do not convert MapType (TM_Platform -> TM_Race)");
         Console.WriteLine("  --dry-run                  Show changes without saving");
@@ -213,7 +214,7 @@ internal static class Trackmania2020Toolbox
             var weekIdStr = weekNum == -1 ? Regex.Match(campaignItem.Name, @"\bWeek 0*(\d+)\b", RegexOptions.IgnoreCase).Groups[1].Value : weekNum.ToString();
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
-            var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Shorts", weekIdStr);
+            var downloadDir = Path.Combine(DefaultMapsFolder, "Weekly Shorts", weekIdStr);
             await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
         }
     }
@@ -255,7 +256,7 @@ internal static class Trackmania2020Toolbox
             var weekIdStr = weekNum == -1 ? Regex.Match(campaignItem.Name, @"\bWeek Grand 0*(\d+)\b", RegexOptions.IgnoreCase).Groups[1].Value : weekNum.ToString();
             if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
 
-            var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Weekly Grands");
+            var downloadDir = Path.Combine(DefaultMapsFolder, "Weekly Grands");
             await DownloadAndFixMaps(fullCampaign.Playlist.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{weekIdStr} - ")), downloadDir, config);
         }
     }
@@ -286,8 +287,29 @@ internal static class Trackmania2020Toolbox
         var fullCampaign = await tmio.GetSeasonalCampaignAsync(campaignItem.Id);
         if (fullCampaign?.Playlist == null) return;
 
-        var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Seasonal", campaignItem.Name);
+        var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
+        var downloadDir = Path.Combine(DefaultMapsFolder, "Seasonal", seasonalFolderName);
         await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+    }
+
+    private static string FormatSeasonalFolderName(string campaignName)
+    {
+        var match = Regex.Match(campaignName, @"(Winter|Spring|Summer|Fall)\s+(\d{4})", RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            string season = match.Groups[1].Value;
+            string year = match.Groups[2].Value;
+            int order = season.ToLower() switch
+            {
+                "winter" => 1,
+                "spring" => 2,
+                "summer" => 3,
+                "fall" => 4,
+                _ => 0
+            };
+            return $"{year} - {order} - {season}";
+        }
+        return campaignName;
     }
 
     private static async Task HandleClubCampaign(TrackmaniaIO tmio, string input, Config config)
@@ -339,7 +361,7 @@ internal static class Trackmania2020Toolbox
         var clubPart = !string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString();
         var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
 
-        var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Clubs", clubPart, campaignPart);
+        var downloadDir = Path.Combine(DefaultMapsFolder, "Clubs", clubPart, campaignPart);
         await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
     }
 
@@ -390,7 +412,7 @@ internal static class Trackmania2020Toolbox
         var response = await tmio.GetTrackOfTheDaysAsync(monthOffset);
         if (response?.Days == null) return;
 
-        var downloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Downloaded", "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
+        var downloadDir = Path.Combine(DefaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
         var totdDays = response.Days.Where(d => d.Map != null);
         if (requestedDays.Any()) totdDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay));
 
