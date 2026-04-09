@@ -307,7 +307,7 @@ internal static class Trackmania2020Toolbox
             ? new List<int> { -1 }
             : ParseNumbers(input);
 
-        if (!requestedWeeks.Any()) return;
+        if (!requestedWeeks.Any()) return downloadedPaths;
 
         foreach (var weekNum in requestedWeeks)
         {
@@ -351,7 +351,7 @@ internal static class Trackmania2020Toolbox
             ? new List<int> { -1 }
             : ParseNumbers(input);
 
-        if (!requestedWeeks.Any()) return;
+        if (!requestedWeeks.Any()) return downloadedPaths;
 
         foreach (var weekNum in requestedWeeks)
         {
@@ -403,13 +403,13 @@ internal static class Trackmania2020Toolbox
         if (campaignItem == null)
         {
             Console.WriteLine($"Error: Could not find seasonal campaign matching '{input}'.");
-            return;
+            return new List<string>();
         }
 
         Console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
 
         var fullCampaign = await tmio.GetSeasonalCampaignAsync(campaignItem.Id);
-        if (fullCampaign?.Playlist == null) return;
+        if (fullCampaign?.Playlist == null) return new List<string>();
 
         var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
         var downloadDir = Path.Combine(DefaultMapsFolder, "Seasonal", seasonalFolderName);
