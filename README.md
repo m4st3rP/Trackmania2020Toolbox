@@ -12,7 +12,7 @@ A command-line utility for downloading Trackmania 2020 maps and batch updating `
   - Club Campaigns
   - Track of the Day
 - **Player**:
-  - Launch Trackmania with selected maps using the `--play` flag.
+  - Launch Trackmania with the first selected map using the `--play` flag.
   - Automatically handles downloaded maps or local files/folders.
   - Requires setting the game executable path once via `--set-game-path`.
 - **Fixer**:
@@ -73,7 +73,7 @@ dotnet run Trackmania2020Toolbox.cs -- --dry-run
 - `--totd <YYYY-MM> [days]`: (e.g., "2024-10" "1-5")
 
 #### Play Options
-- `--play`: Launch Trackmania with the maps (requires game running).
+- `--play`: Launch Trackmania with the first map found (requires game running).
 - `--set-game-path <path>`: Set the path to `Trackmania.exe` in `config.toml`.
 
 #### Fixer Options
