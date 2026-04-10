@@ -276,17 +276,17 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("\nNote: Trackmania needs to be already running for this to work correctly.");
 
         var sortedMaps = mapPaths.Distinct().OrderBy(p => p).ToList();
-        if (sortedMaps.Count > 31)
+        var firstMap = sortedMaps.First();
+        if (sortedMaps.Count > 1)
         {
-            Console.WriteLine($"Warning: Limiting to 31 maps (omitting {sortedMaps.Count - 31}).");
-            sortedMaps = sortedMaps.Take(31).ToList();
+            Console.WriteLine($"Note: Drag-and-drop only supports one map. Launching the first one: {Path.GetFileName(firstMap)}");
         }
 
-        var arguments = string.Join(" ", sortedMaps.Select(p => $"\"{Path.GetFullPath(p)}\""));
+        var arguments = $"\"{Path.GetFullPath(firstMap)}\"";
 
         try
         {
-            Console.WriteLine($"Launching Trackmania with {sortedMaps.Count} maps...");
+            Console.WriteLine($"Launching Trackmania with the map...");
             Process.Start(gamePath, arguments);
         }
         catch (Exception ex)
