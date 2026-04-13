@@ -43,7 +43,7 @@ internal static class Trackmania2020Toolbox
             SaveGamePath(config.SetGamePath);
             if (!config.Play && config.WeeklyShorts == null && config.WeeklyGrands == null &&
                 config.Seasonal == null && config.ClubCampaign == null && config.TotdDate == null &&
-                !config.ExplicitFolder && config.ExtraPaths.Count == 0)
+                config.ExportMedalsPlayerId == null && !config.ExplicitFolder && config.ExtraPaths.Count == 0)
                 return;
         }
 
@@ -82,8 +82,14 @@ internal static class Trackmania2020Toolbox
             downloadActionTaken = true;
         }
 
+        if (config.ExportMedalsPlayerId != null)
+        {
+            await HandleExportCampaignMedals(tmio, config.ExportMedalsPlayerId, config.ExportMedalsCampaign);
+            downloadActionTaken = true;
+        }
+
         // Run fixer for explicit folders, extra paths, or if no downloads were done
-        if (config.ExplicitFolder || config.ExtraPaths.Count > 0 || !downloadActionTaken)
+        if (config.ExplicitFolder || config.ExtraPaths.Count > 0 || (!downloadActionTaken && config.SetGamePath == null))
         {
             var fixedPaths = RunBatchFixer(config, config.ExtraPaths);
             // Only add paths that aren't already in the list
@@ -106,6 +112,8 @@ internal static class Trackmania2020Toolbox
         string? seasonal = null;
         string? clubCampaign = null;
         string? totdDate = null;
+        string? exportMedalsPlayerId = null;
+        string? exportMedalsCampaign = null;
         string folder = DefaultFixerFolder;
         bool explicitFolder = false;
         bool skipTitleUpdate = false;
@@ -139,6 +147,16 @@ internal static class Trackmania2020Toolbox
                 case "--totd":
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) totdDate = args[++i];
                     else totdDate = "latest";
+                    break;
+                case "--export-campaign-medals":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+                    {
+                        exportMedalsPlayerId = args[++i];
+                        if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+                        {
+                            exportMedalsCampaign = args[++i];
+                        }
+                    }
                     break;
                 case "--folder":
                 case "-f":
@@ -180,6 +198,7 @@ internal static class Trackmania2020Toolbox
 
         return new Config(
             weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate,
+            exportMedalsPlayerId, exportMedalsCampaign,
             folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive,
             play, setGamePath, extraPaths
         );
@@ -196,6 +215,8 @@ internal static class Trackmania2020Toolbox
         Console.WriteLine("  --club-campaign <search|id> Download Club Campaign. Searches by name if not <clubId>/<campId>.");
         Console.WriteLine("  --totd [date]              Download Track of the Day. Defaults to today.");
         Console.WriteLine("                             Formats: YYYY-MM, YYYY-MM-DD, YYYY-MM-DD-DD (range)");
+        Console.WriteLine("  --export-campaign-medals <PlayerID> [campaign]");
+        Console.WriteLine("                             Export official campaign medals to medals.csv.");
         Console.WriteLine("\nPlay Options:");
         Console.WriteLine("  --play                     Launch Trackmania with the maps (requires game running)");
         Console.WriteLine("  --set-game-path <path>     Set the path to Trackmania.exe in config.toml");
@@ -213,6 +234,7 @@ internal static class Trackmania2020Toolbox
 
     private record Config(
         string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? TotdDate,
+        string? ExportMedalsPlayerId, string? ExportMedalsCampaign,
         string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun,
         bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
     );
@@ -628,6 +650,99 @@ internal static class Trackmania2020Toolbox
             else if (int.TryParse(part, out var num)) result.Add(num);
         }
         return result.OrderBy(n => n).ToList();
+    }
+
+    private static async Task HandleExportCampaignMedals(TrackmaniaIO tmio, string playerId, string? campaignNameFilter)
+    {
+        if (!Guid.TryParse(playerId, out var accountId))
+        {
+            Console.WriteLine("Error: Player ID must be a valid GUID.");
+            return;
+        }
+
+        string accountIdStr = accountId.ToString();
+        Console.WriteLine($"Exporting medals for Player ID: {accountIdStr}");
+
+        Console.WriteLine("Fetching available Seasonal campaigns...");
+        var allCampaigns = await FetchAllCampaigns(p => tmio.GetSeasonalCampaignsAsync(p));
+
+        var campaignsToProcess = allCampaigns;
+        if (!string.IsNullOrEmpty(campaignNameFilter))
+        {
+            campaignsToProcess = allCampaigns.Where(c => c.Name.Contains(campaignNameFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!campaignsToProcess.Any())
+            {
+                Console.WriteLine($"Error: No seasonal campaigns found matching '{campaignNameFilter}'.");
+                return;
+            }
+        }
+
+        campaignsToProcess = campaignsToProcess.OrderBy(c => c.Id).ToList();
+
+        var csvLines = new List<string> { "Campaign Name, Track Name, Medal, Best Time" };
+
+        for (int i = 0; i < campaignsToProcess.Count; i++)
+        {
+            var campaignItem = campaignsToProcess[i];
+            var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
+            Console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
+
+            await Task.Delay(1000);
+            var fullCampaign = await tmio.GetSeasonalCampaignAsync(campaignItem.Id);
+            if (fullCampaign?.Playlist == null)
+            {
+                Console.WriteLine("  Failed to fetch campaign details.");
+                continue;
+            }
+
+            foreach (var map in fullCampaign.Playlist)
+            {
+                await Task.Delay(1000);
+                var deformattedMapName = TextFormatter.Deformat(map.Name);
+                Console.Write($"  - {deformattedMapName}... ");
+
+                int medal = 0;
+                string formattedTime = "00:00:00:000";
+
+                try
+                {
+                    var leaderboard = await tmio.GetLeaderboardAsync(map.MapUid, accountIdStr);
+                    if (leaderboard.Tops != null && leaderboard.Tops.Count > 0)
+                    {
+                        var record = leaderboard.Tops[0];
+                        var t = record.Time;
+
+                        if (t.TotalMilliseconds <= map.AuthorScore.TotalMilliseconds) medal = 4;
+                        else if (t.TotalMilliseconds <= map.GoldScore.TotalMilliseconds) medal = 3;
+                        else if (t.TotalMilliseconds <= map.SilverScore.TotalMilliseconds) medal = 2;
+                        else if (t.TotalMilliseconds <= map.BronzeScore.TotalMilliseconds) medal = 1;
+
+                        formattedTime = $"{(int)t.TotalHours:D2}:{t.Minutes:D2}:{t.Seconds:D2}:{t.Milliseconds:D3}";
+                        Console.WriteLine($"Time: {formattedTime}, Medal: {medal}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("No record.");
+                    }
+                }
+                catch
+                {
+                    Console.WriteLine("Error or no record.");
+                }
+
+                csvLines.Add($"\"{deformattedCampaignName}\", \"{deformattedMapName}\", {medal}, {formattedTime}");
+            }
+        }
+
+        try
+        {
+            File.WriteAllLines("medals.csv", csvLines);
+            Console.WriteLine($"\nExport complete! Saved to {Path.GetFullPath("medals.csv")}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\nError saving CSV: {ex.Message}");
+        }
     }
 
     // --- Fixer Logic ---
