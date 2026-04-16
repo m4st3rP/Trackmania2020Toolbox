@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using GBX.NET;
@@ -24,6 +25,8 @@ internal static class Trackmania2020Toolbox
     private static readonly string DefaultMapsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
     private static readonly string DefaultFixerFolder = DefaultMapsFolder;
     private const string FilePattern = "*.Map.Gbx";
+
+    private static string GetScriptDirectory([CallerFilePath] string? path = null) => Path.GetDirectoryName(path) ?? Directory.GetCurrentDirectory();
 
     public static async Task Main(string[] args)
     {
@@ -241,7 +244,7 @@ internal static class Trackmania2020Toolbox
 
     private static string? GetGamePath()
     {
-        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "config.toml");
+        var configPath = Path.Combine(GetScriptDirectory(), "config.toml");
         if (!File.Exists(configPath)) return null;
 
         var lines = File.ReadAllLines(configPath);
@@ -261,7 +264,7 @@ internal static class Trackmania2020Toolbox
 
     private static void SaveGamePath(string path)
     {
-        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "config.toml");
+        var configPath = Path.Combine(GetScriptDirectory(), "config.toml");
         try
         {
             File.WriteAllText(configPath, $"game_path = \"{path}\"\n");
@@ -518,8 +521,9 @@ internal static class Trackmania2020Toolbox
         int targetYear = now.Year;
         int targetMonth = now.Month;
         var requestedDays = new List<int>();
+        bool isLatest = dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase);
 
-        if (dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase))
+        if (isLatest)
         {
             requestedDays.Add(now.Day);
         }
@@ -559,10 +563,36 @@ internal static class Trackmania2020Toolbox
         var response = await tmio.GetTrackOfTheDaysAsync(monthOffset);
         if (response?.Days == null) return new List<string>();
 
-        var downloadDir = Path.Combine(DefaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
         var totdDays = response.Days.Where(d => d.Map != null);
-        if (requestedDays.Any()) totdDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay));
+        if (requestedDays.Any())
+        {
+            var filteredDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay)).ToList();
 
+            // Fallback for "latest" if today's map is missing and it's before 17:00 UTC
+            if (isLatest && !filteredDays.Any() && now.Hour < 17)
+            {
+                var yesterday = now.AddDays(-1);
+                int yesterdayMonthOffset = (now.Year - yesterday.Year) * 12 + (now.Month - yesterday.Month);
+
+                var yesterdayResponse = (yesterdayMonthOffset == monthOffset) ? response : await tmio.GetTrackOfTheDaysAsync(yesterdayMonthOffset);
+
+                if (yesterdayResponse?.Days != null)
+                {
+                    filteredDays = yesterdayResponse.Days.Where(d => d.Map != null && d.MonthDay == yesterday.Day).ToList();
+                    if (filteredDays.Any())
+                    {
+                        var downloadDirYesterday = Path.Combine(DefaultMapsFolder, "Track of the Day", yesterdayResponse.Year.ToString(), yesterdayResponse.Month.ToString("D2"));
+                        return await DownloadAndFixMaps(filteredDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDirYesterday, config);
+                    }
+                }
+            }
+
+            totdDays = filteredDays;
+        }
+
+        if (!totdDays.Any()) return new List<string>();
+
+        var downloadDir = Path.Combine(DefaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
         return await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config);
     }
 
