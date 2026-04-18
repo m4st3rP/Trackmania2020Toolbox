@@ -82,14 +82,21 @@ public partial class MainWindow : Window
         this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedals(_playerIdInput.Text ?? "", _medalsCampaignInput.Text));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveGamePath(_gamePathInput.Text ?? "");
         this.FindControl<Button>("BrowseFixerBtn")!.Click += async (_, _) => {
-            var dialog = new OpenFolderDialog();
-            var result = await dialog.ShowAsync(this);
-            if (result != null) _fixerFolderInput.Text = result;
+            var result = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions
+            {
+                Title = "Select Fixer Folder",
+                AllowMultiple = false
+            });
+            if (result.Count > 0) _fixerFolderInput.Text = result[0].Path.LocalPath;
         };
         this.FindControl<Button>("BrowseGameBtn")!.Click += async (_, _) => {
-            var dialog = new OpenFileDialog { Filters = new List<FileDialogFilter> { new FileDialogFilter { Name = "Executables", Extensions = new List<string> { "exe" } } } };
-            var result = await dialog.ShowAsync(this);
-            if (result != null && result.Length > 0) _gamePathInput.Text = result[0];
+            var result = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                Title = "Select Trackmania.exe",
+                FileTypeFilter = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Executables") { Patterns = new[] { "*.exe" } } },
+                AllowMultiple = false
+            });
+            if (result.Count > 0) _gamePathInput.Text = result[0].Path.LocalPath;
         };
     }
 
