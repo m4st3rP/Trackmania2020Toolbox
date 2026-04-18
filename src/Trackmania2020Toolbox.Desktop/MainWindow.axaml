@@ -1,6 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Trackmania2020Toolbox.Desktop"
         x:Class="Trackmania2020Toolbox.Desktop.MainWindow"
+        x:CompileBindings="True"
         Title="Trackmania 2020 Toolbox"
         Width="900" Height="700">
     <Grid RowDefinitions="*, 200">
@@ -25,7 +27,7 @@
                     <!-- File List -->
                     <ListBox Grid.Row="1" Name="BrowserList">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="local:BrowserItem">
                                 <StackPanel Orientation="Horizontal" Spacing="5">
                                     <TextBlock Text="{Binding Icon}" Width="20"/>
                                     <TextBlock Text="{Binding DisplayName}"/>
