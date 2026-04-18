@@ -109,16 +109,16 @@ public class TrackmaniaApiWrapper : ITrackmaniaApi
 
     private class CampaignCollectionProxy : ICampaignCollection
     {
-        private readonly dynamic _obj;
-        public CampaignCollectionProxy(object obj) => _obj = obj;
-        public IEnumerable<ICampaignItem> Campaigns => ((IEnumerable<dynamic>)_obj.Campaigns).Select(c => (ICampaignItem)new CampaignItemProxy(c));
+        private readonly CampaignCollection _obj;
+        public CampaignCollectionProxy(CampaignCollection obj) => _obj = obj;
+        public IEnumerable<ICampaignItem> Campaigns => _obj.Campaigns.Select(c => new CampaignItemProxy(c));
         public int PageCount => _obj.PageCount;
     }
 
     private class CampaignItemProxy : ICampaignItem
     {
-        private readonly dynamic _obj;
-        public CampaignItemProxy(object obj) => _obj = obj;
+        private readonly CampaignItem _obj;
+        public CampaignItemProxy(CampaignItem obj) => _obj = obj;
         public int Id => _obj.Id;
         public string Name => _obj.Name;
         public int? ClubId => _obj.ClubId;
@@ -126,17 +126,17 @@ public class TrackmaniaApiWrapper : ITrackmaniaApi
 
     private class CampaignProxy : ICampaign
     {
-        private readonly dynamic _obj;
-        public CampaignProxy(object obj) => _obj = obj;
-        public IEnumerable<IMap> Playlist => ((IEnumerable<dynamic>)_obj.Playlist).Select(m => (IMap)new MapProxy(m));
+        private readonly Campaign _obj;
+        public CampaignProxy(Campaign obj) => _obj = obj;
+        public IEnumerable<IMap> Playlist => _obj.Playlist.Select(m => new MapProxy(m));
         public string Name => _obj.Name;
         public string? ClubName => _obj.ClubName;
     }
 
     private class MapProxy : IMap
     {
-        private readonly dynamic _obj;
-        public MapProxy(object obj) => _obj = obj;
+        private readonly Map _obj;
+        public MapProxy(Map obj) => _obj = obj;
         public string Name => _obj.Name;
         public string? FileName => _obj.FileName;
         public string? FileUrl => _obj.FileUrl;
@@ -149,48 +149,41 @@ public class TrackmaniaApiWrapper : ITrackmaniaApi
 
     private class TrackOfTheDayCollectionProxy : ITrackOfTheDayCollection
     {
-        private readonly object _obj;
-        public TrackOfTheDayCollectionProxy(object obj) => _obj = obj;
-        public int Year => (int)_obj.GetType().GetProperty("Year")!.GetValue(_obj)!;
-        public int Month => (int)_obj.GetType().GetProperty("Month")!.GetValue(_obj)!;
-        public IEnumerable<ITrackOfTheDayDay> Days => ((IEnumerable<object>)_obj.GetType().GetProperty("Days")!.GetValue(_obj)!).Select(d => (ITrackOfTheDayDay)new TrackOfTheDayDayProxy(d));
+        private readonly TrackOfTheDayMonth _obj;
+        public TrackOfTheDayCollectionProxy(TrackOfTheDayMonth obj) => _obj = obj;
+        public int Year => _obj.Year;
+        public int Month => _obj.Month;
+        public IEnumerable<ITrackOfTheDayDay> Days => _obj.Days.Select(d => new TrackOfTheDayDayProxy(d));
     }
 
     private class TrackOfTheDayDayProxy : ITrackOfTheDayDay
     {
-        private readonly object _obj;
-        public TrackOfTheDayDayProxy(object obj) => _obj = obj;
-        public int MonthDay => (int)_obj.GetType().GetProperty("MonthDay")!.GetValue(_obj)!;
-        public ITrackmaniaMap? Map
-        {
-            get
-            {
-                var map = _obj.GetType().GetProperty("Map")!.GetValue(_obj);
-                return map != null ? new TrackmaniaMapProxy(map) : null;
-            }
-        }
+        private readonly TrackOfTheDay _obj;
+        public TrackOfTheDayDayProxy(TrackOfTheDay obj) => _obj = obj;
+        public int MonthDay => _obj.MonthDay;
+        public ITrackmaniaMap? Map => _obj.Map != null ? new TrackmaniaMapProxy(_obj.Map) : null;
     }
 
     private class TrackmaniaMapProxy : ITrackmaniaMap
     {
-        private readonly object _obj;
-        public TrackmaniaMapProxy(object obj) => _obj = obj;
-        public string Name => (string)_obj.GetType().GetProperty("Name")!.GetValue(_obj)!;
-        public string? FileName => (string?)_obj.GetType().GetProperty("FileName")!.GetValue(_obj);
-        public string? FileUrl => (string?)_obj.GetType().GetProperty("FileUrl")!.GetValue(_obj);
+        private readonly Map _obj;
+        public TrackmaniaMapProxy(Map obj) => _obj = obj;
+        public string Name => _obj.Name;
+        public string? FileName => _obj.FileName;
+        public string? FileUrl => _obj.FileUrl;
     }
 
     private class LeaderboardProxy : ILeaderboard
     {
-        private readonly dynamic _obj;
-        public LeaderboardProxy(object obj) => _obj = obj;
-        public IEnumerable<IRecord> Tops => ((IEnumerable<dynamic>)_obj.Tops).Select(r => (IRecord)new RecordProxy(r));
+        private readonly Leaderboard _obj;
+        public LeaderboardProxy(Leaderboard obj) => _obj = obj;
+        public IEnumerable<IRecord> Tops => _obj.Tops.Select(r => new RecordProxy(r));
     }
 
     private class RecordProxy : IRecord
     {
-        private readonly dynamic _obj;
-        public RecordProxy(object obj) => _obj = obj;
+        private readonly Record _obj;
+        public RecordProxy(Record obj) => _obj = obj;
         public TimeInt32 Time => _obj.Time;
     }
 }
@@ -933,17 +926,18 @@ public class ToolboxApp
     }
 }
 
-internal static class Trackmania2020Toolbox
+public static class TrackmaniaCLI
 {
-    private static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (contact: trackmania-downloader-script@example.com)";
-    private static readonly HttpClient HttpClient = new HttpClient();
+    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (contact: trackmania-downloader-script@example.com)";
+    public static readonly HttpClient HttpClient = new HttpClient();
 
-    private static string GetScriptDirectory([CallerFilePath] string? path = null) => Path.GetDirectoryName(path) ?? Directory.GetCurrentDirectory();
+    public static string GetScriptDirectory([CallerFilePath] string? path = null) => Path.GetDirectoryName(path) ?? Directory.GetCurrentDirectory();
 
-    public static async Task Main(string[] args)
+    public static async Task Run(string[] args)
     {
         Gbx.LZO = new Lzo();
-        HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
+        if (!HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
+            HttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
 
         if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
         {

@@ -40,7 +40,7 @@ public class ToolboxTests
     public void ParseArguments_ShouldParseWeeklyShorts()
     {
         var args = new[] { "--weekly-shorts", "68" };
-        var config = Trackmania2020Toolbox.ParseArguments(args);
+        var config = TrackmaniaCLI.ParseArguments(args);
         Assert.Equal("68", config.WeeklyShorts);
     }
 
@@ -48,7 +48,7 @@ public class ToolboxTests
     public void ParseArguments_ShouldDefaultToLatest()
     {
         var args = new[] { "--weekly-shorts" };
-        var config = Trackmania2020Toolbox.ParseArguments(args);
+        var config = TrackmaniaCLI.ParseArguments(args);
         Assert.Equal("latest", config.WeeklyShorts);
     }
 
@@ -110,7 +110,7 @@ public class ToolboxTests
         campaignMock.Setup(c => c.Playlist).Returns(Enumerable.Empty<IMap>());
         _apiMock.Setup(a => a.GetWeeklyShortCampaignAsync(6)).ReturnsAsync(campaignMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(Array.Empty<string>());
+        var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>());
 
         await _app.HandleWeeklyShorts("6", config);
 
@@ -139,7 +139,7 @@ public class ToolboxTests
 
         _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(collectionMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--force" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--force" });
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
 
         await _app.HandleTrackOfTheDay("latest", config);
@@ -174,7 +174,7 @@ public class ToolboxTests
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--weekly-shorts", "1" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--weekly-shorts", "1" });
         await _app.RunAsync(config);
 
         // Expected filename: 01 - OriginalFileName.Map.Gbx
@@ -186,7 +186,7 @@ public class ToolboxTests
     [Fact]
     public void RunBatchFixer_ShouldProcessExtraPaths()
     {
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--dry-run", "test-map.Map.Gbx" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--dry-run", "test-map.Map.Gbx" });
 
         _fsMock.Setup(f => f.FileExists("test-map.Map.Gbx")).Returns(true);
         _fsMock.Setup(f => f.DirectoryExists("test-map.Map.Gbx")).Returns(false);
@@ -223,7 +223,7 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(todayCollectionMock.Object);
         _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(1)).ReturnsAsync(yesterdayCollectionMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--force" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--force" });
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
 
         await _app.HandleTrackOfTheDay("latest", config);
@@ -260,7 +260,7 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetSeasonalCampaignsAsync(0)).ReturnsAsync(collectionMock.Object);
         _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaignMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--force" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--force" });
 
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
@@ -288,7 +288,7 @@ public class ToolboxTests
         campaignMock.Setup(c => c.Playlist).Returns(Enumerable.Empty<IMap>());
         _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaignMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "latest" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "latest" });
         await _app.HandleSeasonal("Formatted", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Found: Formatted Campaign"))), Times.Once);
@@ -363,7 +363,7 @@ public class ToolboxTests
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true); // File already exists
 
-        var config = Trackmania2020Toolbox.ParseArguments(Array.Empty<string>()); // No --force
+        var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>()); // No --force
 
         await _app.HandleSeasonal("Test Campaign", config);
 
@@ -394,7 +394,7 @@ public class ToolboxTests
         campaignMock.Setup(c => c.Playlist).Returns(Enumerable.Empty<IMap>());
         _apiMock.Setup(a => a.GetClubCampaignAsync(100, 1)).ReturnsAsync(campaignMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(new[] { "--non-interactive" });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--non-interactive" });
 
         await _app.HandleClubCampaign("Campaign", config);
 
@@ -458,7 +458,7 @@ public class ToolboxTests
 
         _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(collectionMock.Object);
 
-        var config = Trackmania2020Toolbox.ParseArguments(Array.Empty<string>());
+        var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>());
 
         // Range: 2024-10 1-2
         await _app.HandleTrackOfTheDay("2024-10-1-2", config);
