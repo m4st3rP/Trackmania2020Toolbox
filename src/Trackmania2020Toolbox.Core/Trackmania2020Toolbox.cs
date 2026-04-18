@@ -931,7 +931,7 @@ public static class TrackmaniaCLI
     public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (contact: trackmania-downloader-script@example.com)";
     public static readonly HttpClient HttpClient = new HttpClient();
 
-    public static string GetScriptDirectory([CallerFilePath] string? path = null) => Path.GetDirectoryName(path) ?? Directory.GetCurrentDirectory();
+    public static string GetScriptDirectory() => AppDomain.CurrentDomain.BaseDirectory;
 
     public static async Task Run(string[] args)
     {
