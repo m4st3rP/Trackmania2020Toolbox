@@ -57,8 +57,14 @@ dotnet run --project src/Trackmania2020Toolbox.CLI/Trackmania2020Toolbox.CLI.csp
 
 ### NativeAOT Publishing
 
-To publish a standalone binary for Linux:
+To publish a standalone binary:
 
+**Linux:**
 ```bash
 dotnet publish src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj -c Release -r linux-x64 /p:PublishAot=true /p:InvariantGlobalization=true
+```
+
+**Windows:**
+```bash
+dotnet publish src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj -c Release -r win-x64 /p:PublishAot=true /p:InvariantGlobalization=true
 ```
