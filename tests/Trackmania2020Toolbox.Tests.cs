@@ -466,3 +466,21 @@ public class ToolboxTests
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Processing 2 maps"))), Times.Once);
     }
 }
+
+public class RuntimeTests
+{
+    [Fact]
+    public void GetScriptDirectory_ShouldReturnCurrentBaseDirectory()
+    {
+        var result = TrackmaniaCLI.GetScriptDirectory();
+
+        Assert.NotNull(result);
+        Assert.True(Directory.Exists(result), $"Directory should exist: {result}");
+
+        // Ensure it's not a source path (baking check)
+        Assert.DoesNotContain("Trackmania2020Toolbox.Core", result);
+
+        // It should match the actual app domain base directory
+        Assert.Equal(AppDomain.CurrentDomain.BaseDirectory, result);
+    }
+}
