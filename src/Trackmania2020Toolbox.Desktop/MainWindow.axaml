@@ -10,10 +10,16 @@
             <TabItem Header="Browser" Name="BrowserTab">
                 <Grid RowDefinitions="Auto, *, Auto" Margin="10">
                     <!-- Navigation Bar -->
-                    <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto" Margin="0,0,0,10">
-                        <Button Content="Up" Width="40" Name="BrowserUpBtn"/>
-                        <TextBox Grid.Column="1" Margin="5,0" Name="BrowserPathDisplay" IsReadOnly="True" VerticalContentAlignment="Center"/>
-                        <Button Grid.Column="2" Content="Refresh" Name="BrowserRefreshBtn"/>
+                    <Grid Grid.Row="0" RowDefinitions="Auto, Auto" Margin="0,0,0,10">
+                        <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto">
+                            <Button Content="Up" Width="40" Name="BrowserUpBtn"/>
+                            <TextBox Grid.Column="1" Margin="5,0" Name="BrowserPathDisplay" IsReadOnly="True" VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="2" Content="Refresh" Name="BrowserRefreshBtn"/>
+                        </Grid>
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto, *" Margin="0,5,0,0">
+                            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBox Grid.Column="1" Name="BrowserSearchInput" Watermark="Search maps and folders..."/>
+                        </Grid>
                     </Grid>
 
                     <!-- File List -->

@@ -49,6 +49,7 @@ public partial class MainWindow : Window
 
     private readonly ListBox _browserList;
     private readonly TextBox _browserPathDisplay;
+    private readonly TextBox _browserSearchInput;
     private readonly ObservableCollection<BrowserItem> _browserItems = new();
     private string _currentBrowserDirectory = string.Empty;
     private FileSystemWatcher? _watcher;
@@ -78,6 +79,7 @@ public partial class MainWindow : Window
 
         _browserList = this.FindControl<ListBox>("BrowserList")!;
         _browserPathDisplay = this.FindControl<TextBox>("BrowserPathDisplay")!;
+        _browserSearchInput = this.FindControl<TextBox>("BrowserSearchInput")!;
         _browserList.ItemsSource = _browserItems;
 
         var console = new LogConsole(AppendLog);
@@ -140,6 +142,7 @@ public partial class MainWindow : Window
 
         this.FindControl<Button>("BrowserUpBtn")!.Click += (_, _) => NavigateUp();
         this.FindControl<Button>("BrowserRefreshBtn")!.Click += (_, _) => RefreshBrowser();
+        _browserSearchInput.TextChanged += (_, _) => RefreshBrowser();
         this.FindControl<Button>("BrowserPlayBtn")!.Click += (_, _) => PlaySelectedMap();
         _browserList.DoubleTapped += (_, _) => {
             if (_doubleClickToPlayCheck.IsChecked ?? true) HandleBrowserAction();
@@ -304,13 +307,18 @@ public partial class MainWindow : Window
         _browserPathDisplay.Text = _currentBrowserDirectory;
         _browserItems.Clear();
 
+        var filter = _browserSearchInput.Text ?? "";
+
         try
         {
             var dirs = Directory.GetDirectories(_currentBrowserDirectory).OrderBy(d => d);
             foreach (var dir in dirs)
             {
+                var name = Path.GetFileName(dir);
+                if (!string.IsNullOrEmpty(filter) && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+
                 _browserItems.Add(new BrowserItem {
-                    DisplayName = Path.GetFileName(dir),
+                    DisplayName = name,
                     FullPath = dir,
                     IsDirectory = true
                 });
@@ -321,6 +329,11 @@ public partial class MainWindow : Window
             {
                 var fileName = Path.GetFileName(file);
                 var displayName = TextFormatter.Deformat(fileName);
+
+                if (!string.IsNullOrEmpty(filter) &&
+                    !fileName.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
+                    !displayName.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+
                 _browserItems.Add(new BrowserItem {
                     DisplayName = displayName,
                     FullPath = file,
