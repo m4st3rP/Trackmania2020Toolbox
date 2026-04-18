@@ -39,28 +39,28 @@ Run from the repository root:
 
 ```bash
 # Show help
-dotnet run Trackmania2020Toolbox.cs -- --help
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --help
 
 # Download Weekly Shorts (week 68)
-dotnet run Trackmania2020Toolbox.cs -- --weekly-shorts 68
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --weekly-shorts 68
 
 # Download TOTD for Oct 2024 (days 1 to 5)
-dotnet run Trackmania2020Toolbox.cs -- --totd 2024-10 1-5
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --totd 2024-10 1-5
 
 # Set the game path (required for --play)
-dotnet run Trackmania2020Toolbox.cs -- --set-game-path "C:\Path\To\Trackmania.exe"
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --set-game-path "C:\Path\To\Trackmania.exe"
 
 # Download latest Weekly Shorts and play them immediately
-dotnet run Trackmania2020Toolbox.cs -- --weekly-shorts --play
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --weekly-shorts --play
 
 # Play specific local maps
-dotnet run Trackmania2020Toolbox.cs -- --play "C:\Maps\Map1.Map.Gbx" "C:\Maps\Map2.Map.Gbx"
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --play "C:\Maps\Map1.Map.Gbx" "C:\Maps\Map2.Map.Gbx"
 
 # Batch fix an existing folder without changing TitleId
-dotnet run Trackmania2020Toolbox.cs -- --folder "C:\Maps" --skip-title-update
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --folder "C:\Maps" --skip-title-update
 
 # Dry-run batch fix
-dotnet run Trackmania2020Toolbox.cs -- --dry-run
+dotnet run --project src/Trackmania2020Toolbox.csproj -- --dry-run
 ```
 
 ### Options
