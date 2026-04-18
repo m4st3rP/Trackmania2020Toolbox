@@ -2,94 +2,63 @@
 
 *Disclaimer: This code was mostly written by an AI and has not been thoroughly checked by a human.*
 
-A command-line utility for downloading Trackmania 2020 maps and batch updating `.Map.Gbx` files. It can download maps from various campaigns and automatically apply fixes to `TitleId` and `MapType`.
+A utility for downloading Trackmania 2020 maps and batch updating `.Map.Gbx` files. It features both a modern GUI and a command-line interface.
 
 ## Features
 
+- **GUI**: A modern, cross-platform interface built with Avalonia UI.
 - **Downloader**:
   - Weekly Shorts & Weekly Grands
   - Seasonal Campaigns
   - Club Campaigns
   - Track of the Day
 - **Player**:
-  - Launch Trackmania with the first selected map using the `--play` flag.
+  - Launch Trackmania with the selected maps using the `--play` flag (CLI) or the "Play" feature in the GUI.
   - Automatically handles downloaded maps or local files/folders.
-  - Requires setting the game executable path once via `--set-game-path`.
 - **Fixer**:
   - Recursively processes `.Map.Gbx` files.
-  - Updates `TitleId` from `OrbitalDev@falguiere` to `TMStadium` by default.
-  - Converts `MapType` from `TM_Platform` to `TM_Race` by default.
+  - Updates `TitleId` and converts `MapType` for compatibility.
   - Runs automatically on downloaded maps.
-  - Batch mode for existing folders.
-  - Dry-run mode to preview changes.
-- **Testable Architecture**:
-  - Core logic is decoupled from external dependencies.
-  - Includes a comprehensive suite of unit tests.
+- **NativeAOT Compatible**: Optimized for performance and small binary size.
 
 ## Requirements
 
-- .NET 8.0 SDK or higher.
+- .NET 10.0 SDK or higher.
+
+## Project Structure
+
+- `Trackmania2020Toolbox.Core`: Shared logic and API wrappers.
+- `Trackmania2020Toolbox.CLI`: Command-line interface.
+- `Trackmania2020Toolbox.Desktop`: Avalonia UI desktop application.
 
 ## Getting Started
 
 ### Build and Test
 
-This utility is structured as a standard .NET project. **Do not build or run the `.cs` files directly**, as they rely on project-managed dependencies.
-
 ```bash
 # Build the solution
 dotnet build
 
-# Run unit and regression tests
+# Run unit tests
 dotnet test
 ```
 
-### Usage
-
-Run from the repository root using the project file:
+### Run the GUI
 
 ```bash
-# Show help
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --help
-
-# Download Weekly Shorts (week 68)
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --weekly-shorts 68
-
-# Download TOTD for Oct 2024 (days 1 to 5)
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --totd 2024-10 1-5
-
-# Set the game path (required for --play)
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --set-game-path "C:\Path\To\Trackmania.exe"
-
-# Download latest Weekly Shorts and play them immediately
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --weekly-shorts --play
-
-# Play specific local maps
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --play "C:\Maps\Map1.Map.Gbx" "C:\Maps\Map2.Map.Gbx"
-
-# Batch fix an existing folder without changing TitleId
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --folder "C:\Maps" --skip-title-update
-
-# Dry-run batch fix
-dotnet run --project src/Trackmania2020Toolbox.csproj -- --dry-run
+dotnet run --project src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj
 ```
 
-### Options
+### Run the CLI
 
-#### Download Options
-- `--weekly-shorts <weeks>`: (e.g., "68, 70-72")
-- `--weekly-grands <weeks>`: (e.g., "65")
-- `--seasonal <name>`: (e.g., "Winter 2024")
-- `--club-campaign <search|id>`: (e.g., "123/456")
-- `--totd <YYYY-MM> [days]`: (e.g., "2024-10" "1-5")
+```bash
+dotnet run --project src/Trackmania2020Toolbox.CLI/Trackmania2020Toolbox.CLI.csproj -- --help
+```
 
-#### Play Options
-- `--play`: Launch Trackmania with the first map found (requires game running).
-- `--set-game-path <path>`: Set the path to `Trackmania.exe` in `config.toml`.
+### NativeAOT Publishing
 
-#### Fixer Options
-- `--folder`, `-f <path>`: Folder for batch fixing (default: `Documents\Trackmania2020\Maps\Toolbox`)
-- `--skip-title-update`: Do not update `TitleId`
-- `--skip-maptype-convert`: Do not convert `MapType`
-- `--dry-run`: Show changes without saving
-- `--help`, `-h`: Show help message
+To publish a standalone binary for Linux:
+
+```bash
+dotnet publish src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj -c Release -r linux-x64 /p:PublishAot=true /p:InvariantGlobalization=true
+```
