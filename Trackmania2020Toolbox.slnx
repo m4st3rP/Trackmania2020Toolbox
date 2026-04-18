@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Trackmania2020Toolbox.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Trackmania2020Toolbox.Tests.csproj" />
-  </Folder>
-</Solution>
