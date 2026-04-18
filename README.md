@@ -22,20 +22,31 @@ A command-line utility for downloading Trackmania 2020 maps and batch updating `
   - Runs automatically on downloaded maps.
   - Batch mode for existing folders.
   - Dry-run mode to preview changes.
+- **Testable Architecture**:
+  - Core logic is decoupled from external dependencies.
+  - Includes a comprehensive suite of unit tests.
 
 ## Requirements
 
-This script relies on several libraries referenced at the top of the file:
-```csharp
-#:package GBX.NET@2.*
-#:package GBX.NET.LZO@2.*
-#:package ManiaAPI.TrackmaniaIO@2.*
-#:package TmEssentials@2.*
+- .NET 8.0 SDK or higher.
+
+## Getting Started
+
+### Build and Test
+
+This utility is structured as a standard .NET project. **Do not build or run the `.cs` files directly**, as they rely on project-managed dependencies.
+
+```bash
+# Build the solution
+dotnet build
+
+# Run unit and regression tests
+dotnet test
 ```
 
-## Usage
+### Usage
 
-Run from the repository root:
+Run from the repository root using the project file:
 
 ```bash
 # Show help
