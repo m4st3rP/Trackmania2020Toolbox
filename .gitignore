@@ -2,3 +2,4 @@
 .local/
 .nuget/
 .templateengine/
+config.toml
