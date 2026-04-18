@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
