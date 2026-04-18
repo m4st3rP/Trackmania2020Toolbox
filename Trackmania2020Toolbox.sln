@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trackmania2020Toolbox", "src\Trackmania2020Toolbox.csproj", "{5DE106AF-74BB-49D4-93E6-3EAC3E42EA9A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trackmania2020Toolbox.Tests", "tests\Trackmania2020Toolbox.Tests.csproj", "{1BFB0AE1-5804-4187-BA15-9955AA003B85}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5DE106AF-74BB-49D4-93E6-3EAC3E42EA9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DE106AF-74BB-49D4-93E6-3EAC3E42EA9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DE106AF-74BB-49D4-93E6-3EAC3E42EA9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DE106AF-74BB-49D4-93E6-3EAC3E42EA9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1BFB0AE1-5804-4187-BA15-9955AA003B85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1BFB0AE1-5804-4187-BA15-9955AA003B85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1BFB0AE1-5804-4187-BA15-9955AA003B85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1BFB0AE1-5804-4187-BA15-9955AA003B85}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
