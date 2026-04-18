@@ -3,3 +3,5 @@
 .nuget/
 .templateengine/
 config.toml
+**/bin/
+**/obj/
