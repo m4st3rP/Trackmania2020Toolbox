@@ -103,46 +103,54 @@
                                 </Grid>
                             </StackPanel>
                         </HeaderedContentControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                        <HeaderedContentControl Header="Trackmania Exchange (TMX)">
+            <!-- Exchange Tab -->
+            <TabItem Header="Exchange">
+                <ScrollViewer>
+                    <StackPanel Margin="20" Spacing="15">
+                        <TextBlock Text="Trackmania Exchange (TMX)" FontSize="20" FontWeight="Bold"/>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Download maps by ID or URL (comma-separated):"/>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Name="TmxInput"/>
+                                <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="TmxDownloadBtn"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Download Map Pack by ID or URL:"/>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Name="TmxPackInput"/>
+                                <Button Grid.Column="1" Content="Download Pack" Margin="5,0,0,0" Name="TmxPackBtn"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <HeaderedContentControl Header="Search TMX">
                             <StackPanel Spacing="10">
-                                <StackPanel Spacing="5">
-                                    <TextBlock Text="Download by ID or URL (comma-separated):"/>
-                                    <Grid ColumnDefinitions="*, Auto">
-                                        <TextBox Name="TmxInput"/>
-                                        <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="TmxDownloadBtn"/>
-                                    </Grid>
-                                </StackPanel>
-                                <StackPanel Spacing="5">
-                                    <TextBlock Text="Download Map Pack by ID or URL:"/>
-                                    <Grid ColumnDefinitions="*, Auto">
-                                        <TextBox Name="TmxPackInput"/>
-                                        <Button Grid.Column="1" Content="Download Pack" Margin="5,0,0,0" Name="TmxPackBtn"/>
-                                    </Grid>
-                                </StackPanel>
-                                <StackPanel Spacing="5">
-                                    <TextBlock Text="Search TMX:"/>
-                                    <Grid ColumnDefinitions="*, *, Auto">
-                                        <TextBox Name="TmxSearchNameInput" Watermark="Track Name"/>
-                                        <TextBox Grid.Column="1" Name="TmxSearchAuthorInput" Watermark="Author" Margin="5,0"/>
-                                        <Button Grid.Column="2" Content="Search" Name="TmxSearchBtn"/>
-                                    </Grid>
-                                    <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
-                                        <TextBlock Text="Sort:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                        <ComboBox Grid.Column="1" Name="TmxSortCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                            <ComboBoxItem>Name</ComboBoxItem>
-                                            <ComboBoxItem>Author</ComboBoxItem>
-                                            <ComboBoxItem>Awards</ComboBoxItem>
-                                            <ComboBoxItem>Downloads</ComboBoxItem>
-                                        </ComboBox>
-                                        <TextBlock Grid.Column="2" Text="Order:" VerticalAlignment="Center" Margin="10,0,5,0"/>
-                                        <ComboBox Grid.Column="3" Name="TmxOrderCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                            <ComboBoxItem>Ascending</ComboBoxItem>
-                                            <ComboBoxItem>Descending</ComboBoxItem>
-                                        </ComboBox>
-                                        <Button Grid.Column="4" Content="Random Map" Margin="10,0,0,0" Name="TmxRandomBtn"/>
-                                    </Grid>
-                                </StackPanel>
+                                <Grid ColumnDefinitions="*, *, Auto">
+                                    <TextBox Name="TmxSearchNameInput" Watermark="Track Name"/>
+                                    <TextBox Grid.Column="1" Name="TmxSearchAuthorInput" Watermark="Author" Margin="5,0"/>
+                                    <Button Grid.Column="2" Content="Search" Name="TmxSearchBtn"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
+                                    <TextBlock Text="Sort:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <ComboBox Grid.Column="1" Name="TmxSortCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem>Name</ComboBoxItem>
+                                        <ComboBoxItem>Author</ComboBoxItem>
+                                        <ComboBoxItem>Awards</ComboBoxItem>
+                                        <ComboBoxItem>Downloads</ComboBoxItem>
+                                    </ComboBox>
+                                    <TextBlock Grid.Column="2" Text="Order:" VerticalAlignment="Center" Margin="10,0,5,0"/>
+                                    <ComboBox Grid.Column="3" Name="TmxOrderCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem>Ascending</ComboBoxItem>
+                                        <ComboBoxItem>Descending</ComboBoxItem>
+                                    </ComboBox>
+                                    <Button Grid.Column="4" Content="Random Map" Margin="10,0,0,0" Name="TmxRandomBtn"/>
+                                </Grid>
                             </StackPanel>
                         </HeaderedContentControl>
                     </StackPanel>
@@ -182,28 +190,30 @@
 
             <!-- Settings Tab -->
             <TabItem Header="Settings">
-                <StackPanel Margin="20" Spacing="15">
-                    <TextBlock Text="Settings" FontSize="20" FontWeight="Bold"/>
-                    <TextBlock Text="Trackmania.exe Path:"/>
-                    <Grid ColumnDefinitions="*, Auto">
-                        <TextBox Name="GamePathInput"/>
-                        <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseGameBtn"/>
-                    </Grid>
+                <ScrollViewer>
+                    <StackPanel Margin="20" Spacing="15">
+                        <TextBlock Text="Settings" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="Trackmania.exe Path:"/>
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBox Name="GamePathInput"/>
+                            <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseGameBtn"/>
+                        </Grid>
 
-                    <TextBlock Text="Browser Folder:"/>
-                    <Grid ColumnDefinitions="*, Auto">
-                        <TextBox Name="BrowserFolderInput"/>
-                        <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseBrowserFolderBtn"/>
-                    </Grid>
+                        <TextBlock Text="Browser Folder:"/>
+                        <Grid ColumnDefinitions="*, Auto">
+                            <TextBox Name="BrowserFolderInput"/>
+                            <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseBrowserFolderBtn"/>
+                        </Grid>
 
-                    <Button Content="Save Settings" Name="SaveSettingsBtn"/>
+                        <Button Content="Save Settings" Name="SaveSettingsBtn"/>
 
-                    <Separator Margin="0,10"/>
-                    <TextBlock Text="Options" FontSize="16" FontWeight="SemiBold"/>
-                    <CheckBox Name="PlayAfterDownloadCheck" Content="Play map immediately after download/fix"/>
-                    <CheckBox Name="DoubleClickToPlayCheck" Content="Double-click to play in Browser" IsChecked="True"/>
-                    <CheckBox Name="EnterToPlayCheck" Content="Press Enter to play in Browser" IsChecked="True"/>
-                </StackPanel>
+                        <Separator Margin="0,10"/>
+                        <TextBlock Text="Options" FontSize="16" FontWeight="SemiBold"/>
+                        <CheckBox Name="PlayAfterDownloadCheck" Content="Play map immediately after download/fix"/>
+                        <CheckBox Name="DoubleClickToPlayCheck" Content="Double-click to play in Browser" IsChecked="True"/>
+                        <CheckBox Name="EnterToPlayCheck" Content="Press Enter to play in Browser" IsChecked="True"/>
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
 
