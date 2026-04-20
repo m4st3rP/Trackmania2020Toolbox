@@ -10,11 +10,13 @@ public class LogConsole : IConsole
 {
     private readonly Action<string> _logAction;
     private readonly Action<string>? _writeAction;
+    private readonly Func<string, IEnumerable<string>, Task<int>>? _selectionFunc;
 
-    public LogConsole(Action<string> logAction, Action<string>? writeAction = null)
+    public LogConsole(Action<string> logAction, Action<string>? writeAction = null, Func<string, IEnumerable<string>, Task<int>>? selectionFunc = null)
     {
         _logAction = logAction;
         _writeAction = writeAction;
+        _selectionFunc = selectionFunc;
     }
 
     public void WriteLine(string? value = null)
@@ -40,11 +42,14 @@ public class LogConsole : IConsole
         return null;
     }
 
-    public Task<int> SelectItemAsync(string title, IEnumerable<string> items)
+    public async Task<int> SelectItemAsync(string title, IEnumerable<string> items)
     {
-        // For GUI, we just take the first item if multiple are found for now.
-        // Implementing a popup dialog would be better but is more complex.
-        WriteLine($"Note: Multiple items found for '{title}'. Picking the first one in non-interactive GUI mode.");
-        return Task.FromResult(1);
+        if (_selectionFunc != null)
+        {
+            return await _selectionFunc(title, items);
+        }
+
+        WriteLine($"Note: Multiple items found for '{title}'. Picking the first one (fallback).");
+        return 1;
     }
 }
