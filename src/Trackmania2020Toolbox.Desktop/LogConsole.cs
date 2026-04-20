@@ -39,4 +39,12 @@ public class LogConsole : IConsole
         // For now, return null as we don't have interactive input in GUI yet
         return null;
     }
+
+    public Task<int> SelectItemAsync(string title, IEnumerable<string> items)
+    {
+        // For GUI, we just take the first item if multiple are found for now.
+        // Implementing a popup dialog would be better but is more complex.
+        WriteLine($"Note: Multiple items found for '{title}'. Picking the first one in non-interactive GUI mode.");
+        return Task.FromResult(1);
+    }
 }

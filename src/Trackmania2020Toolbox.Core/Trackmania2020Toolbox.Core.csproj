@@ -12,6 +12,8 @@
   <ItemGroup>
     <PackageReference Include="GBX.NET" Version="2.*" />
     <PackageReference Include="GBX.NET.LZO" Version="2.*" />
+    <PackageReference Include="ManiaAPI.TMX" Version="2.8.0" />
+    <PackageReference Include="ManiaAPI.TMX.Extensions.Gbx" Version="2.7.0" />
     <PackageReference Include="ManiaAPI.TrackmaniaIO" Version="2.*" />
     <PackageReference Include="TmEssentials" Version="2.*" />
   </ItemGroup>
