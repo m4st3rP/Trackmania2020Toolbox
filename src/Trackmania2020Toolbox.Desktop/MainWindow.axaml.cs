@@ -104,7 +104,7 @@ public partial class MainWindow : Window
         _browserList.ItemsSource = _browserItems;
 
         var console = new LogConsole(AppendLog, selectionFunc: SelectItemAsync);
-        var api = new TrackmaniaApiWrapper(TrackmaniaCLI.UserAgent);
+        var api = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
         var fs = new RealFileSystem();
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
