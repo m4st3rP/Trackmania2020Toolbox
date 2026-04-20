@@ -34,6 +34,13 @@ public partial class MainWindow : Window
     private readonly TextBox _seasonalInput;
     private readonly TextBox _toTDInput;
     private readonly TextBox _clubInput;
+    private readonly TextBox _tmxInput;
+    private readonly TextBox _tmxPackInput;
+    private readonly TextBox _tmxSearchNameInput;
+    private readonly TextBox _tmxSearchAuthorInput;
+    private readonly ComboBox _tmxSortCombo;
+    private readonly ComboBox _tmxOrderCombo;
+    private readonly ComboBox _browserSortCombo;
     private readonly TextBox _fixerFolderInput;
     private readonly TextBox _playerIdInput;
     private readonly TextBox _medalsCampaignInput;
@@ -64,6 +71,13 @@ public partial class MainWindow : Window
         _seasonalInput = this.FindControl<TextBox>("SeasonalInput")!;
         _toTDInput = this.FindControl<TextBox>("ToTDInput")!;
         _clubInput = this.FindControl<TextBox>("ClubInput")!;
+        _tmxInput = this.FindControl<TextBox>("TmxInput")!;
+        _tmxPackInput = this.FindControl<TextBox>("TmxPackInput")!;
+        _tmxSearchNameInput = this.FindControl<TextBox>("TmxSearchNameInput")!;
+        _tmxSearchAuthorInput = this.FindControl<TextBox>("TmxSearchAuthorInput")!;
+        _tmxSortCombo = this.FindControl<ComboBox>("TmxSortCombo")!;
+        _tmxOrderCombo = this.FindControl<ComboBox>("TmxOrderCombo")!;
+        _browserSortCombo = this.FindControl<ComboBox>("BrowserSortCombo")!;
         _fixerFolderInput = this.FindControl<TextBox>("FixerFolderInput")!;
         _playerIdInput = this.FindControl<TextBox>("PlayerIdInput")!;
         _medalsCampaignInput = this.FindControl<TextBox>("MedalsCampaignInput")!;
@@ -108,6 +122,15 @@ public partial class MainWindow : Window
         this.FindControl<Button>("SeasonalBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleSeasonal(_seasonalInput.Text ?? "latest", GetConfig()));
         this.FindControl<Button>("ToTDBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTrackOfTheDay(_toTDInput.Text ?? "latest", GetConfig()));
         this.FindControl<Button>("ClubBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleClubCampaign(_clubInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxMaps(_tmxInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxPacks(_tmxPackInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxRandom(GetConfig()));
+        this.FindControl<Button>("TmxSearchBtn")!.Click += async (_, _) => {
+            string sort = (_tmxSortCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "name";
+            bool desc = (_tmxOrderCombo.SelectedIndex == 1);
+            await RunTask(() => _app.HandleTmxSearch(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig()));
+        };
+
         this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) => {
              AppendLog("Running batch fixer..." + Environment.NewLine);
              await Task.Run(() => _app.RunBatchFixer(GetConfig()));
@@ -143,6 +166,7 @@ public partial class MainWindow : Window
         this.FindControl<Button>("BrowserUpBtn")!.Click += (_, _) => NavigateUp();
         this.FindControl<Button>("BrowserRefreshBtn")!.Click += (_, _) => RefreshBrowser();
         _browserSearchInput.TextChanged += (_, _) => RefreshBrowser();
+        _browserSortCombo.SelectionChanged += (_, _) => RefreshBrowser();
         this.FindControl<Button>("BrowserPlayBtn")!.Click += (_, _) => PlaySelectedMap();
         _browserList.DoubleTapped += (_, _) => {
             if (_doubleClickToPlayCheck.IsChecked ?? true) HandleBrowserAction();
@@ -313,32 +337,42 @@ public partial class MainWindow : Window
 
         try
         {
-            var dirs = Directory.GetDirectories(_currentBrowserDirectory).OrderBy(d => d);
-            foreach (var dir in dirs)
+            bool desc = _browserSortCombo.SelectedIndex == 1;
+
+            var dirs = Directory.GetDirectories(_currentBrowserDirectory)
+                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
+
+            var sortedDirs = desc ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
+
+            foreach (var dir in sortedDirs)
             {
-                var name = Path.GetFileName(dir);
-                if (!string.IsNullOrEmpty(filter) && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
 
                 _browserItems.Add(new BrowserItem {
-                    DisplayName = name,
-                    FullPath = dir,
+                    DisplayName = dir.Name,
+                    FullPath = dir.Path,
                     IsDirectory = true
                 });
             }
 
-            var files = Directory.GetFiles(_currentBrowserDirectory, "*.Map.Gbx").OrderBy(f => f);
-            foreach (var file in files)
+            var files = Directory.GetFiles(_currentBrowserDirectory, "*.Map.Gbx")
+                .Select(f => {
+                    var fn = Path.GetFileName(f);
+                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
+                });
+
+            var filteredFiles = files.Where(f =>
+                string.IsNullOrEmpty(filter) ||
+                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+            var sortedFiles = desc ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
+
+            foreach (var file in sortedFiles)
             {
-                var fileName = Path.GetFileName(file);
-                var displayName = TextFormatter.Deformat(fileName);
-
-                if (!string.IsNullOrEmpty(filter) &&
-                    !fileName.Contains(filter, StringComparison.OrdinalIgnoreCase) &&
-                    !displayName.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-
                 _browserItems.Add(new BrowserItem {
-                    DisplayName = displayName,
-                    FullPath = file,
+                    DisplayName = file.DisplayName,
+                    FullPath = file.Path,
                     IsDirectory = false
                 });
             }

@@ -465,6 +465,65 @@ public class ToolboxTests
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Processing 2 maps"))), Times.Once);
     }
+
+    [Fact]
+    public async Task HandleTmxMaps_ShouldUseCorrectDownloadUrl()
+    {
+        var mapMock = new Mock<ITmxMap>();
+        mapMock.Setup(m => m.Id).Returns(18101);
+        mapMock.Setup(m => m.Name).Returns("Contact");
+
+        _apiMock.Setup(a => a.GetTmxMapAsync(18101)).ReturnsAsync(mapMock.Object);
+        _apiMock.Setup(a => a.GetTmxMapUrl(18101)).Returns("https://trackmania.exchange/mapgbx/18101");
+
+        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
+        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx", "18101" });
+        await _app.RunAsync(config);
+
+        _netMock.Verify(n => n.GetByteArrayAsync("https://trackmania.exchange/mapgbx/18101"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SearchTmxMaps_ShouldMapSortStringsCorrectly()
+    {
+        _apiMock.Setup(a => a.SearchTmxMapsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
+                .ReturnsAsync(Enumerable.Empty<ITmxMap>());
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-search", "test", "--tmx-sort", "awards", "--tmx-desc" });
+        await _app.RunAsync(config);
+
+        _apiMock.Verify(a => a.SearchTmxMapsAsync("test", null, "awards", true), Times.Once);
+    }
+
+    [Fact]
+    public async Task SelectItemAsync_ShouldBeCalledWhenMultipleCampaignsFound()
+    {
+        var campaign1 = new Mock<ICampaignItem>();
+        campaign1.Setup(c => c.Id).Returns(1);
+        campaign1.Setup(c => c.Name).Returns("Campaign 1");
+
+        var campaign2 = new Mock<ICampaignItem>();
+        campaign2.Setup(c => c.Id).Returns(2);
+        campaign2.Setup(c => c.Name).Returns("Campaign 2");
+
+        var collectionMock = new Mock<ICampaignCollection>();
+        collectionMock.Setup(c => c.Campaigns).Returns(new[] { campaign1.Object, campaign2.Object });
+        collectionMock.Setup(c => c.PageCount).Returns(1);
+
+        _apiMock.Setup(a => a.GetSeasonalCampaignsAsync(0)).ReturnsAsync(collectionMock.Object);
+        _consoleMock.Setup(c => c.SelectItemAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>())).ReturnsAsync(1);
+
+        var campaignMock = new Mock<ICampaign>();
+        campaignMock.Setup(c => c.Playlist).Returns(Enumerable.Empty<IMap>());
+        _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaignMock.Object);
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "Campaign" });
+        await _app.RunAsync(config);
+
+        _consoleMock.Verify(c => c.SelectItemAsync(It.Is<string>(s => s.Contains("Multiple")), It.IsAny<IEnumerable<string>>()), Times.Once);
+    }
 }
 
 public class RuntimeTests

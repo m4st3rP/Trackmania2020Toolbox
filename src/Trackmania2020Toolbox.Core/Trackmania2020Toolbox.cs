@@ -45,6 +45,7 @@ public interface ITrackmaniaApi : IDisposable
     Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId);
 
     Task<ITmxMap?> GetTmxMapAsync(int id);
+    string GetTmxMapUrl(int id);
     Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc);
     Task<ITmxMap?> GetRandomTmxMapAsync();
     Task<ITmxMapPack?> GetTmxMapPackAsync(int id);
@@ -131,13 +132,15 @@ public class TrackmaniaApiWrapper : ITrackmaniaApi
         return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
     }
 
+    public string GetTmxMapUrl(int id) => _tmx.GetMapGbxUrl(id);
+
     public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
     {
         int? order = sort.ToLowerInvariant() switch
         {
             "name" => desc ? 2 : 1,
             "author" => desc ? 4 : 3,
-            "favs" => desc ? 12 : 11,
+            "awards" => desc ? 12 : 11,
             "downloads" => desc ? 20 : 19,
             _ => desc ? 2 : 1
         };
@@ -784,7 +787,7 @@ public class ToolboxApp
             var map = await _api.GetTmxMapAsync(id);
             if (map != null)
             {
-                mapsToDownload.Add((map.Name, null, $"https://trackmania.exchange/maps/download/{map.Id}", null));
+                mapsToDownload.Add((map.Name, null, _api.GetTmxMapUrl(map.Id), null));
             }
             else
             {
@@ -792,7 +795,7 @@ public class ToolboxApp
             }
         }
 
-        return await DownloadAndFixMaps(mapsToDownload, downloadDir, config);
+        return await DownloadAndFixMaps(mapsToDownload.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)m.Prefix)), downloadDir, config);
     }
 
     public async Task<List<string>> HandleTmxPacks(string input, Config config)
@@ -814,7 +817,7 @@ public class ToolboxApp
             var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
             var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", TextFormatter.Deformat(pack.Name));
 
-            downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => (m.Name, (string?)null, (string?)$"https://trackmania.exchange/maps/download/{m.Id}", (string?)$"{(i + 1):D2} - ")), downloadDir, config));
+            downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => (m.Name, (string?)null, (string?)_api.GetTmxMapUrl(m.Id), (string?)$"{(i + 1):D2} - ")), downloadDir, config));
         }
 
         return downloadedPaths;
@@ -1377,7 +1380,7 @@ public static class TrackmaniaCLI
         Console.WriteLine("  --tmx-pack <ids|urls>      Download map packs from Trackmania Exchange.");
         Console.WriteLine("  --tmx-search <name>        Search for maps on TMX.");
         Console.WriteLine("  --tmx-author <name>        Search for maps by author on TMX.");
-        Console.WriteLine("  --tmx-sort <sort>          Sort search results (name, author, favs, downloads). Default: name.");
+        Console.WriteLine("  --tmx-sort <sort>          Sort search results (name, author, awards, downloads). Default: name.");
         Console.WriteLine("  --tmx-desc                 Sort search results in descending order.");
         Console.WriteLine("  --tmx-random               Download a random map from TMX.");
         Console.WriteLine("  --export-campaign-medals <PlayerID> [campaign]");
