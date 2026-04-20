@@ -41,6 +41,10 @@ public partial class MainWindow : Window
     private readonly ComboBox _tmxSortCombo;
     private readonly ComboBox _tmxOrderCombo;
     private readonly ComboBox _browserSortCombo;
+    private readonly Grid _selectionOverlay;
+    private readonly TextBlock _selectionTitle;
+    private readonly ListBox _selectionList;
+    private TaskCompletionSource<int>? _selectionTcs;
     private readonly TextBox _fixerFolderInput;
     private readonly TextBox _playerIdInput;
     private readonly TextBox _medalsCampaignInput;
@@ -78,6 +82,9 @@ public partial class MainWindow : Window
         _tmxSortCombo = this.FindControl<ComboBox>("TmxSortCombo")!;
         _tmxOrderCombo = this.FindControl<ComboBox>("TmxOrderCombo")!;
         _browserSortCombo = this.FindControl<ComboBox>("BrowserSortCombo")!;
+        _selectionOverlay = this.FindControl<Grid>("SelectionOverlay")!;
+        _selectionTitle = this.FindControl<TextBlock>("SelectionTitle")!;
+        _selectionList = this.FindControl<ListBox>("SelectionList")!;
         _fixerFolderInput = this.FindControl<TextBox>("FixerFolderInput")!;
         _playerIdInput = this.FindControl<TextBox>("PlayerIdInput")!;
         _medalsCampaignInput = this.FindControl<TextBox>("MedalsCampaignInput")!;
@@ -96,7 +103,7 @@ public partial class MainWindow : Window
         _browserSearchInput = this.FindControl<TextBox>("BrowserSearchInput")!;
         _browserList.ItemsSource = _browserItems;
 
-        var console = new LogConsole(AppendLog);
+        var console = new LogConsole(AppendLog, selectionFunc: SelectItemAsync);
         var api = new TrackmaniaApiWrapper(TrackmaniaCLI.UserAgent);
         var fs = new RealFileSystem();
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
@@ -184,6 +191,33 @@ public partial class MainWindow : Window
                 RefreshBrowser();
             }
         };
+
+        this.FindControl<Button>("SelectionConfirmBtn")!.Click += (_, _) => {
+            if (_selectionList.SelectedIndex >= 0)
+            {
+                _selectionTcs?.SetResult(_selectionList.SelectedIndex + 1);
+                _selectionOverlay.IsVisible = false;
+            }
+        };
+
+        this.FindControl<Button>("SelectionCancelBtn")!.Click += (_, _) => {
+            _selectionTcs?.SetResult(0);
+            _selectionOverlay.IsVisible = false;
+        };
+    }
+
+    private async Task<int> SelectItemAsync(string title, IEnumerable<string> items)
+    {
+        _selectionTcs = new TaskCompletionSource<int>();
+
+        await Dispatcher.UIThread.InvokeAsync(() => {
+            _selectionTitle.Text = title;
+            _selectionList.ItemsSource = items.ToList();
+            _selectionList.SelectedIndex = -1;
+            _selectionOverlay.IsVisible = true;
+        });
+
+        return await _selectionTcs.Task;
     }
 
     private void AppendLog(string text)
@@ -204,7 +238,7 @@ public partial class MainWindow : Window
             _convertMapTypeCheck.IsChecked ?? true,
             _dryRunCheck.IsChecked ?? false,
             _forceOverwriteCheck.IsChecked ?? false,
-            false, // non-interactive
+            true, // interactive
             _playAfterDownloadCheck.IsChecked ?? false,
             null,
             new List<string>()

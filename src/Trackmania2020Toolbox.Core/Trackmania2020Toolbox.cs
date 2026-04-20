@@ -735,7 +735,9 @@ public class ToolboxApp
         else
         {
             _console.WriteLine($"Searching for club campaigns matching '{input}'...");
-            var campaigns = await FetchAllCampaigns(p => _api.GetClubCampaignsAsync(p));
+            // Club campaigns can have thousands of pages, so we limit it to 20 pages for search
+            // because there is no server-side search by name in the public Trackmania.io API.
+            var campaigns = await FetchAllCampaigns(p => _api.GetClubCampaignsAsync(p), maxPages: 20);
             var matches = campaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (matches.Count == 0)
@@ -1025,11 +1027,11 @@ public class ToolboxApp
         return processedPaths;
     }
 
-    private async Task<List<ICampaignItem>> FetchAllCampaigns(Func<int, Task<ICampaignCollection>> fetchFunc)
+    private async Task<List<ICampaignItem>> FetchAllCampaigns(Func<int, Task<ICampaignCollection>> fetchFunc, int maxPages = int.MaxValue)
     {
         var all = new List<ICampaignItem>();
         int page = 0, pageCount = 1;
-        while (page < pageCount)
+        while (page < pageCount && page < maxPages)
         {
             var response = await fetchFunc(page);
             if (response?.Campaigns != null) all.AddRange(response.Campaigns);

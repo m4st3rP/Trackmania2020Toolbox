@@ -524,6 +524,23 @@ public class ToolboxTests
 
         _consoleMock.Verify(c => c.SelectItemAsync(It.Is<string>(s => s.Contains("Multiple")), It.IsAny<IEnumerable<string>>()), Times.Once);
     }
+
+    [Fact]
+    public async Task HandleClubCampaign_ShouldLimitSearchPages()
+    {
+        var collectionMock = new Mock<ICampaignCollection>();
+        collectionMock.Setup(c => c.Campaigns).Returns(Enumerable.Empty<ICampaignItem>());
+        collectionMock.Setup(c => c.PageCount).Returns(100);
+
+        _apiMock.Setup(a => a.GetClubCampaignsAsync(It.IsAny<int>())).ReturnsAsync(collectionMock.Object);
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--club-campaign", "Search" });
+        await _app.RunAsync(config);
+
+        // Should not fetch more than 20 pages
+        _apiMock.Verify(a => a.GetClubCampaignsAsync(It.IsInRange(0, 19, Moq.Range.Inclusive)), Times.AtLeastOnce);
+        _apiMock.Verify(a => a.GetClubCampaignsAsync(It.IsInRange(20, 99, Moq.Range.Inclusive)), Times.Never);
+    }
 }
 
 public class RuntimeTests

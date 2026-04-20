@@ -222,5 +222,25 @@
             <TextBlock Grid.Row="0" Text="Log Output" Background="#333" Foreground="White" Padding="5,2"/>
             <TextBox Grid.Row="1" Name="LogOutput" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas,Monospace" Background="Black" Foreground="LightGray"/>
         </Grid>
+
+        <!-- Selection Overlay -->
+        <Grid Grid.Row="0" Grid.RowSpan="2" Name="SelectionOverlay" Background="#AA000000" IsVisible="False">
+            <Border Background="#222" CornerRadius="8" Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center" Width="600" Height="500" BorderBrush="#444" BorderThickness="1">
+                <Grid RowDefinitions="Auto, *, Auto">
+                    <TextBlock Grid.Row="0" Name="SelectionTitle" Text="Select Item" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+                    <ListBox Grid.Row="1" Name="SelectionList" Background="#111">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,15,0,0">
+                        <Button Content="Cancel" Width="80" Name="SelectionCancelBtn"/>
+                        <Button Content="Select" Width="80" Classes="primary" Name="SelectionConfirmBtn"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
