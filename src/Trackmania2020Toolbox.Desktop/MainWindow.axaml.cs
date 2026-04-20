@@ -171,7 +171,9 @@ public partial class MainWindow : Window
     private Config GetConfig()
     {
         return new Config(
-            null, null, null, null, null, null, null,
+            null, null, null, null, null,
+            null, null, null, null, "name", false, false,
+            null, null,
             _fixerFolderInput.Text ?? _app._defaultMapsFolder,
             true, // Use explicit folder
             _updateTitleCheck.IsChecked ?? true,

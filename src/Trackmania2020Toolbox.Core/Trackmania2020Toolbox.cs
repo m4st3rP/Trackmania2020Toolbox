@@ -11,6 +11,7 @@ using GBX.NET;
 using GBX.NET.Engines.Game;
 using GBX.NET.LZO;
 using ManiaAPI.TrackmaniaIO;
+using ManiaAPI.TMX;
 using TmEssentials;
 
 [assembly: InternalsVisibleTo("Trackmania2020Toolbox.Tests")]
@@ -27,6 +28,9 @@ public interface ITrackOfTheDayCollection { int Year { get; } int Month { get; }
 public interface ILeaderboard { IEnumerable<IRecord> Tops { get; } }
 public interface IRecord { TimeInt32 Time { get; } }
 
+public interface ITmxMap { int Id { get; } string Name { get; } string AuthorName { get; } int AwardCount { get; } int DownloadCount { get; } }
+public interface ITmxMapPack { int Id { get; } string Name { get; } }
+
 public interface ITrackmaniaApi : IDisposable
 {
     Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page);
@@ -39,6 +43,12 @@ public interface ITrackmaniaApi : IDisposable
     Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId);
     Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset);
     Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId);
+
+    Task<ITmxMap?> GetTmxMapAsync(int id);
+    Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc);
+    Task<ITmxMap?> GetRandomTmxMapAsync();
+    Task<ITmxMapPack?> GetTmxMapPackAsync(int id);
+    Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id);
 }
 
 public interface IFileSystem
@@ -70,10 +80,12 @@ public interface IConsole
     void WriteLine(string? value = null);
     void Write(string? value = null);
     string? ReadLine();
+    Task<int> SelectItemAsync(string title, IEnumerable<string> items);
 }
 
 public record Config(
     string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
+    string? TmxMaps, string? TmxPacks, string? TmxSearch, string? TmxAuthor, string TmxSort, bool TmxDesc, bool TmxRandom,
     string? ExportMedalsPlayerId, string? ExportMedalsCampaign,
     string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun,
     bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
@@ -82,7 +94,15 @@ public record Config(
 public class TrackmaniaApiWrapper : ITrackmaniaApi
 {
     private readonly TrackmaniaIO _api;
-    public TrackmaniaApiWrapper(string userAgent) => _api = new TrackmaniaIO(userAgent);
+    private readonly MX _tmx;
+
+    public TrackmaniaApiWrapper(string userAgent)
+    {
+        _api = new TrackmaniaIO(userAgent);
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("User-Agent", userAgent);
+        _tmx = new MX(client, TmxSite.Trackmania);
+    }
 
     public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page));
     public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id) => new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id));
@@ -105,7 +125,69 @@ public class TrackmaniaApiWrapper : ITrackmaniaApi
         return new LeaderboardProxy(result);
     }
 
-    public void Dispose() => _api.Dispose();
+    public async Task<ITmxMap?> GetTmxMapAsync(int id)
+    {
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Id = new long[] { id } });
+        return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
+    }
+
+    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
+    {
+        int? order = sort.ToLowerInvariant() switch
+        {
+            "name" => desc ? 2 : 1,
+            "author" => desc ? 4 : 3,
+            "favs" => desc ? 12 : 11,
+            "downloads" => desc ? 20 : 19,
+            _ => desc ? 2 : 1
+        };
+
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Name = name, Author = author, Order1 = order });
+        return result.Results.Select(r => new TmxMapProxy(r));
+    }
+
+    public async Task<ITmxMap?> GetRandomTmxMapAsync()
+    {
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Random = 1, Count = 1 });
+        return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
+    }
+
+    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id)
+    {
+        var result = await _tmx.SearchMappacksAsync(new MX.SearchMappacksParameters { Id = new long[] { id } });
+        return result.Results.Count > 0 ? new TmxMapPackProxy(result.Results[0]) : null;
+    }
+
+    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id)
+    {
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { MappackId = id });
+        return result.Results.Select(r => new TmxMapProxy(r));
+    }
+
+    public void Dispose()
+    {
+        _api.Dispose();
+        _tmx.Dispose();
+    }
+
+    private class TmxMapProxy : ITmxMap
+    {
+        private readonly MapItem _obj;
+        public TmxMapProxy(MapItem obj) => _obj = obj;
+        public int Id => (int)_obj.MapId;
+        public string Name => _obj.Name;
+        public string AuthorName => _obj.Uploader.Name;
+        public int AwardCount => _obj.AwardCount;
+        public int DownloadCount => _obj.DownloadCount;
+    }
+
+    private class TmxMapPackProxy : ITmxMapPack
+    {
+        private readonly MappackItem _obj;
+        public TmxMapPackProxy(MappackItem obj) => _obj = obj;
+        public int Id => (int)_obj.MappackId;
+        public string Name => _obj.Name;
+    }
 
     private class CampaignCollectionProxy : ICampaignCollection
     {
@@ -248,6 +330,21 @@ public class RealConsole : IConsole
     public void WriteLine(string? value = null) => Console.WriteLine(value);
     public void Write(string? value = null) => Console.Write(value);
     public string? ReadLine() => Console.ReadLine();
+    public Task<int> SelectItemAsync(string title, IEnumerable<string> items)
+    {
+        var itemList = items.ToList();
+        WriteLine($"\n{title}:");
+        for (int i = 0; i < itemList.Count; i++)
+        {
+            WriteLine($"{i + 1}: {itemList[i]}");
+        }
+        Write("\nSelect a number (or 0 to cancel): ");
+        if (int.TryParse(ReadLine(), out var choice) && choice > 0 && choice <= itemList.Count)
+        {
+            return Task.FromResult(choice);
+        }
+        return Task.FromResult(0);
+    }
 }
 
 public class ToolboxApp
@@ -270,7 +367,7 @@ public class ToolboxApp
         _console = console;
         _dateTime = dateTime;
         _scriptDirectory = scriptDirectory;
-        _defaultMapsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+        _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
     }
 
     public async Task RunAsync(Config config)
@@ -314,6 +411,30 @@ public class ToolboxApp
         if (config.ToTDDate != null)
         {
             mapPaths.AddRange(await HandleTrackOfTheDay(config.ToTDDate, config));
+            downloadActionTaken = true;
+        }
+
+        if (config.TmxMaps != null)
+        {
+            mapPaths.AddRange(await HandleTmxMaps(config.TmxMaps, config));
+            downloadActionTaken = true;
+        }
+
+        if (config.TmxPacks != null)
+        {
+            mapPaths.AddRange(await HandleTmxPacks(config.TmxPacks, config));
+            downloadActionTaken = true;
+        }
+
+        if (config.TmxSearch != null || config.TmxAuthor != null)
+        {
+            mapPaths.AddRange(await HandleTmxSearch(config.TmxSearch, config.TmxAuthor, config.TmxSort, config.TmxDesc, config));
+            downloadActionTaken = true;
+        }
+
+        if (config.TmxRandom)
+        {
+            mapPaths.AddRange(await HandleTmxRandom(config));
             downloadActionTaken = true;
         }
 
@@ -430,20 +551,35 @@ public class ToolboxApp
 
         foreach (var weekNum in requestedWeeks)
         {
-            ICampaignItem? campaignItem;
+            var matches = new List<ICampaignItem>();
             if (weekNum == -1)
             {
-                campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+                var latest = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+                if (latest != null) matches.Add(latest);
             }
             else
             {
-                campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek 0*{weekNum}\b", RegexOptions.IgnoreCase));
+                matches = campaigns.Where(c => Regex.IsMatch(c.Name, $@"\bWeek 0*{weekNum}\b", RegexOptions.IgnoreCase)).ToList();
             }
 
-            if (campaignItem == null)
+            ICampaignItem? campaignItem = null;
+            if (matches.Count == 0)
             {
                 _console.WriteLine($"Error: Could not find campaign {(weekNum == -1 ? "latest" : $"Week {weekNum}")}. Skipping.");
                 continue;
+            }
+            else if (matches.Count == 1 || !config.Interactive)
+            {
+                campaignItem = matches[0];
+            }
+            else
+            {
+                var choice = await _console.SelectItemAsync($"Multiple campaigns found for Week {weekNum}", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
+                if (choice > 0)
+                {
+                    campaignItem = matches[choice - 1];
+                }
+                else continue;
             }
 
             _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
@@ -474,20 +610,35 @@ public class ToolboxApp
 
         foreach (var weekNum in requestedWeeks)
         {
-            ICampaignItem? campaignItem;
+            var matches = new List<ICampaignItem>();
             if (weekNum == -1)
             {
-                campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+                var latest = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+                if (latest != null) matches.Add(latest);
             }
             else
             {
-                campaignItem = campaigns.FirstOrDefault(c => Regex.IsMatch(c.Name, $@"\bWeek Grand 0*{weekNum}\b", RegexOptions.IgnoreCase));
+                matches = campaigns.Where(c => Regex.IsMatch(c.Name, $@"\bWeek Grand 0*{weekNum}\b", RegexOptions.IgnoreCase)).ToList();
             }
 
-            if (campaignItem == null)
+            ICampaignItem? campaignItem = null;
+            if (matches.Count == 0)
             {
                 _console.WriteLine($"Error: Could not find campaign {(weekNum == -1 ? "latest" : $"Week Grand {weekNum}")}. Skipping.");
                 continue;
+            }
+            else if (matches.Count == 1 || !config.Interactive)
+            {
+                campaignItem = matches[0];
+            }
+            else
+            {
+                var choice = await _console.SelectItemAsync($"Multiple campaigns found for Week Grand {weekNum}", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
+                if (choice > 0)
+                {
+                    campaignItem = matches[choice - 1];
+                }
+                else continue;
             }
 
             _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
@@ -509,20 +660,35 @@ public class ToolboxApp
         _console.WriteLine("Fetching available Seasonal campaigns...");
         var campaigns = await FetchAllCampaigns(p => _api.GetSeasonalCampaignsAsync(p));
 
-        ICampaignItem? campaignItem;
+        var matches = new List<ICampaignItem>();
         if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
-            campaignItem = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+            var latest = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
+            if (latest != null) matches.Add(latest);
         }
         else
         {
-            campaignItem = campaigns.FirstOrDefault(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+            matches = campaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
-        if (campaignItem == null)
+        ICampaignItem? campaignItem = null;
+        if (matches.Count == 0)
         {
             _console.WriteLine($"Error: Could not find seasonal campaign matching '{input}'.");
             return new List<string>();
+        }
+        else if (matches.Count == 1 || !config.Interactive)
+        {
+            campaignItem = matches[0];
+        }
+        else
+        {
+            var choice = await _console.SelectItemAsync("Multiple seasonal campaigns found", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
+            if (choice > 0)
+            {
+                campaignItem = matches[choice - 1];
+            }
+            else return new List<string>();
         }
 
         _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
@@ -581,13 +747,8 @@ public class ToolboxApp
             }
             else
             {
-                _console.WriteLine("\nMultiple campaigns found:");
-                for (int i = 0; i < matches.Count; i++)
-                {
-                    _console.WriteLine($"{i + 1}: {TextFormatter.Deformat(matches[i].Name)} (ID: {matches[i].ClubId}/{matches[i].Id})");
-                }
-                _console.Write("\nSelect a campaign number (or 0 to cancel): ");
-                if (int.TryParse(_console.ReadLine(), out var choice) && choice > 0 && choice <= matches.Count)
+                var choice = await _console.SelectItemAsync("Multiple campaigns found", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.ClubId}/{m.Id})"));
+                if (choice > 0)
                 {
                     var match = matches[choice - 1];
                     return await DownloadClubCampaign(match.ClubId ?? 0, match.Id, config);
@@ -607,6 +768,120 @@ public class ToolboxApp
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Clubs", clubPart, campaignPart);
         return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+    }
+
+    public async Task<List<string>> HandleTmxMaps(string input, Config config)
+    {
+        var downloadedPaths = new List<string>();
+        var ids = ParseTmxIds(input);
+        if (!ids.Any()) return downloadedPaths;
+
+        var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
+        var mapsToDownload = new List<(string Name, string? FileName, string? FileUrl, string? Prefix)>();
+
+        foreach (var id in ids)
+        {
+            var map = await _api.GetTmxMapAsync(id);
+            if (map != null)
+            {
+                mapsToDownload.Add((map.Name, null, $"https://trackmania.exchange/maps/download/{map.Id}", null));
+            }
+            else
+            {
+                _console.WriteLine($"Error: Could not find TMX map {id}.");
+            }
+        }
+
+        return await DownloadAndFixMaps(mapsToDownload, downloadDir, config);
+    }
+
+    public async Task<List<string>> HandleTmxPacks(string input, Config config)
+    {
+        var downloadedPaths = new List<string>();
+        var ids = ParseTmxIds(input);
+        if (!ids.Any()) return downloadedPaths;
+
+        foreach (var id in ids)
+        {
+            var pack = await _api.GetTmxMapPackAsync(id);
+            if (pack == null)
+            {
+                _console.WriteLine($"Error: Could not find TMX map pack {id}.");
+                continue;
+            }
+
+            _console.WriteLine($"Found Map Pack: {TextFormatter.Deformat(pack.Name)}");
+            var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", TextFormatter.Deformat(pack.Name));
+
+            downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => (m.Name, (string?)null, (string?)$"https://trackmania.exchange/maps/download/{m.Id}", (string?)$"{(i + 1):D2} - ")), downloadDir, config));
+        }
+
+        return downloadedPaths;
+    }
+
+    public async Task<List<string>> HandleTmxSearch(string? name, string? author, string sort, bool desc, Config config)
+    {
+        _console.WriteLine($"Searching TMX (Name: {name ?? "Any"}, Author: {author ?? "Any"}, Sort: {sort}, Desc: {desc})...");
+        var results = (await _api.SearchTmxMapsAsync(name, author, sort, desc)).ToList();
+
+        if (results.Count == 0)
+        {
+            _console.WriteLine("No TMX maps found.");
+            return new List<string>();
+        }
+
+        if (!config.Interactive)
+        {
+            var match = results[0];
+            _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} by {match.AuthorName} (ID: {match.Id})");
+            return await HandleTmxMaps(match.Id.ToString(), config);
+        }
+
+        var displayResults = results.Take(20).ToList();
+        var choice = await _console.SelectItemAsync("Search results", displayResults.Select(r => $"{TextFormatter.Deformat(r.Name)} by {r.AuthorName} (ID: {r.Id}, Awards: {r.AwardCount}, DLs: {r.DownloadCount})"));
+        if (choice > 0)
+        {
+            return await HandleTmxMaps(displayResults[choice - 1].Id.ToString(), config);
+        }
+
+        return new List<string>();
+    }
+
+    public async Task<List<string>> HandleTmxRandom(Config config)
+    {
+        _console.WriteLine("Fetching random map from TMX...");
+        var map = await _api.GetRandomTmxMapAsync();
+        if (map == null)
+        {
+            _console.WriteLine("Error: Failed to fetch random map.");
+            return new List<string>();
+        }
+
+        _console.WriteLine($"Random Map: {TextFormatter.Deformat(map.Name)} by {map.AuthorName} (ID: {map.Id})");
+        return await HandleTmxMaps(map.Id.ToString(), config);
+    }
+
+    private List<int> ParseTmxIds(string input)
+    {
+        var result = new HashSet<int>();
+        var parts = input.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            if (trimmed.StartsWith("https://trackmania.exchange/maps/", StringComparison.OrdinalIgnoreCase))
+            {
+                var match = Regex.Match(trimmed, @"/maps/(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+            }
+            else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
+            {
+                 var match = Regex.Match(trimmed, @"/mappack/(\d+)");
+                 if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+            }
+            else if (int.TryParse(trimmed, out var num)) result.Add(num);
+        }
+        return result.ToList();
     }
 
     public async Task<List<string>> HandleTrackOfTheDay(string dateInput, Config config)
@@ -967,7 +1242,14 @@ public static class TrackmaniaCLI
         string? totdDate = null;
         string? exportMedalsPlayerId = null;
         string? exportMedalsCampaign = null;
-        string defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+        string? tmxMaps = null;
+        string? tmxPacks = null;
+        string? tmxSearch = null;
+        string? tmxAuthor = null;
+        string tmxSort = "name";
+        bool tmxDesc = false;
+        bool tmxRandom = false;
+        string defaultFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
         string folder = defaultFolder;
         bool explicitFolder = false;
         bool skipTitleUpdate = false;
@@ -1012,6 +1294,27 @@ public static class TrackmaniaCLI
                         }
                     }
                     break;
+                case "--tmx":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxMaps = args[++i];
+                    break;
+                case "--tmx-pack":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxPacks = args[++i];
+                    break;
+                case "--tmx-search":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxSearch = args[++i];
+                    break;
+                case "--tmx-author":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxAuthor = args[++i];
+                    break;
+                case "--tmx-sort":
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxSort = args[++i];
+                    break;
+                case "--tmx-desc":
+                    tmxDesc = true;
+                    break;
+                case "--tmx-random":
+                    tmxRandom = true;
+                    break;
                 case "--folder":
                 case "-f":
                     if (i + 1 < args.Length)
@@ -1052,6 +1355,7 @@ public static class TrackmaniaCLI
 
         return new Config(
             weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate,
+            tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom,
             exportMedalsPlayerId, exportMedalsCampaign,
             folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive,
             play, setGamePath, extraPaths
@@ -1069,6 +1373,13 @@ public static class TrackmaniaCLI
         Console.WriteLine("  --club-campaign <search|id> Download Club Campaign. Searches by name if not <clubId>/<campId>.");
         Console.WriteLine("  --totd [date]              Download Track of the Day. Defaults to today.");
         Console.WriteLine("                             Formats: YYYY-MM, YYYY-MM-DD, YYYY-MM-DD-DD (range)");
+        Console.WriteLine("  --tmx <ids|urls>           Download maps from Trackmania Exchange (comma-separated).");
+        Console.WriteLine("  --tmx-pack <ids|urls>      Download map packs from Trackmania Exchange.");
+        Console.WriteLine("  --tmx-search <name>        Search for maps on TMX.");
+        Console.WriteLine("  --tmx-author <name>        Search for maps by author on TMX.");
+        Console.WriteLine("  --tmx-sort <sort>          Sort search results (name, author, favs, downloads). Default: name.");
+        Console.WriteLine("  --tmx-desc                 Sort search results in descending order.");
+        Console.WriteLine("  --tmx-random               Download a random map from TMX.");
         Console.WriteLine("  --export-campaign-medals <PlayerID> [campaign]");
         Console.WriteLine("                             Export official campaign medals to medals.csv.");
         Console.WriteLine("\nPlay Options:");
