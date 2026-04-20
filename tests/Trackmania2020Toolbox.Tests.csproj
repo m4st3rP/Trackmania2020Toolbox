@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\src\Trackmania2020Toolbox.Core\Trackmania2020Toolbox.Core.csproj" />
+    <ProjectReference Include="..\src\Trackmania2020Toolbox.CLI\Trackmania2020Toolbox.CLI.csproj" />
   </ItemGroup>
 
 </Project>
