@@ -460,8 +460,8 @@ public class ToolboxTests
 
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>());
 
-        // Range: 2024-10 1-2
-        await _app.HandleTrackOfTheDay("2024-10-1-2", config);
+        // Range: 2024.10.01-02
+        await _app.HandleTrackOfTheDay("2024.10.01-02", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Processing 2 maps"))), Times.Once);
     }
@@ -558,5 +558,94 @@ public class RuntimeTests
 
         // It should match the actual app domain base directory
         Assert.Equal(AppDomain.CurrentDomain.BaseDirectory, result);
+    }
+}
+
+public class FlagRefactorTests
+{
+    private readonly ToolboxApp _app;
+
+    public FlagRefactorTests()
+    {
+        _app = new ToolboxApp(new Mock<ITrackmaniaApi>().Object, new Mock<IFileSystem>().Object, new Mock<INetworkService>().Object, new Mock<IMapFixer>().Object, new Mock<IConsole>().Object, new Mock<IDateTime>().Object, "/test");
+    }
+
+    [Theory]
+    [InlineData("4", 4, null, 4, null)]
+    [InlineData("6-12", 6, null, 12, null)]
+    [InlineData("15.1", 15, 1, 15, 1)]
+    [InlineData("21.3-23.1", 21, 3, 23, 1)]
+    public void ParseMapRanges_ShouldHandleFormats(string input, int startC, int? startM, int endC, int? endM)
+    {
+        var result = _app.ParseMapRanges(input);
+        Assert.Single(result);
+        Assert.Equal(startC, result[0].Start.Campaign);
+        Assert.Equal(startM, result[0].Start.Map);
+        Assert.Equal(endC, result[0].End.Campaign);
+        Assert.Equal(endM, result[0].End.Map);
+    }
+
+    [Theory]
+    [InlineData("Winter 2025", 2025, 1, null, 2025, 1, null)]
+    [InlineData("2024", 2024, 1, null, 2024, 4, null)]
+    [InlineData("Summer 2021.1", 2021, 3, 1, 2021, 3, 1)]
+    [InlineData("Summer 2022-Fall 2022", 2022, 3, null, 2022, 4, null)]
+    [InlineData("Winter 2026.24-Spring 2026.3", 2026, 1, 24, 2026, 2, 3)]
+    public void ParseSeasonalRanges_ShouldHandleFormats(string input, int startY, int startO, int? startM, int endY, int endO, int? endM)
+    {
+        var result = _app.ParseSeasonalRanges(input);
+        Assert.Single(result);
+        Assert.Equal(startY, result[0].Start.Year);
+        Assert.Equal(startO, result[0].Start.SeasonOrder);
+        Assert.Equal(startM, result[0].Start.Map);
+        Assert.Equal(endY, result[0].End.Year);
+        Assert.Equal(endO, result[0].End.SeasonOrder);
+        Assert.Equal(endM, result[0].End.Map);
+    }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldHandleFormats()
+    {
+        var now = new DateTime(2025, 1, 1);
+
+        // yyyy
+        var r = _app.ParseToTdRanges("2024", now);
+        Assert.Equal(new DateTime(2024, 1, 1), r[0].Start);
+        Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
+
+        // yyyy.mm
+        r = _app.ParseToTdRanges("2024.02", now);
+        Assert.Equal(new DateTime(2024, 2, 1), r[0].Start);
+        Assert.Equal(new DateTime(2024, 2, 29), r[0].End);
+
+        // yyyy.mm.dd
+        r = _app.ParseToTdRanges("2024.02.15", now);
+        Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
+        Assert.Equal(new DateTime(2024, 2, 15), r[0].End);
+
+        // yyyy.mm.dd-dd
+        r = _app.ParseToTdRanges("2024.02.15-20", now);
+        Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
+        Assert.Equal(new DateTime(2024, 2, 20), r[0].End);
+
+        // yyyy.mm.dd-mm.dd
+        r = _app.ParseToTdRanges("2024.02.15-03.10", now);
+        Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
+        Assert.Equal(new DateTime(2024, 3, 10), r[0].End);
+
+        // yyyy.mm.dd-yyyy.mm.dd
+        r = _app.ParseToTdRanges("2024.12.30-2025.01.02", now);
+        Assert.Equal(new DateTime(2024, 12, 30), r[0].Start);
+        Assert.Equal(new DateTime(2025, 1, 2), r[0].End);
+
+        // yyyy.mm-yyyy.mm
+        r = _app.ParseToTdRanges("2024.11-2024.12", now);
+        Assert.Equal(new DateTime(2024, 11, 1), r[0].Start);
+        Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
+
+        // yyyy-yyyy
+        r = _app.ParseToTdRanges("2023-2024", now);
+        Assert.Equal(new DateTime(2023, 1, 1), r[0].Start);
+        Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
     }
 }
