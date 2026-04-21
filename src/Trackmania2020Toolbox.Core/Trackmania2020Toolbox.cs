@@ -527,7 +527,6 @@ public class ToolboxApp
         HandleWeeklyCampaign(input, config, "Weekly Shorts",
             p => _api.GetWeeklyShortCampaignsAsync(p),
             id => _api.GetWeeklyShortCampaignAsync(id),
-            @"\bWeek 0*{0}\b",
             @"\bWeek 0*(\d+)\b",
             weekId => Path.Combine(_defaultMapsFolder, "Weekly Shorts", weekId),
             (m, i, weekId) => $"{(i + 1):D2} - ");
@@ -536,7 +535,6 @@ public class ToolboxApp
         HandleWeeklyCampaign(input, config, "Weekly Grands",
             p => _api.GetWeeklyGrandCampaignsAsync(p),
             id => _api.GetWeeklyGrandCampaignAsync(id),
-            @"\bWeek Grand 0*{0}\b",
             @"\bWeek Grand 0*(\d+)\b",
             weekId => Path.Combine(_defaultMapsFolder, "Weekly Grands"),
             (m, i, weekId) => $"{weekId} - ");
@@ -545,49 +543,62 @@ public class ToolboxApp
         string input, Config config, string displayName,
         Func<int, Task<ICampaignCollection>> fetchAllFunc,
         Func<int, Task<ICampaign>> fetchOneFunc,
-        string searchRegexFormat, string idRegexPattern,
+        string idRegexPattern,
         Func<string, string> downloadDirFunc,
         Func<IMap, int, string, string> prefixFunc)
     {
         var downloadedPaths = new List<string>();
         _console.WriteLine($"Fetching available {displayName} campaigns...");
-        var campaigns = await FetchAllCampaigns(fetchAllFunc);
+        var allCampaigns = await FetchAllCampaigns(fetchAllFunc);
 
-        var requestedWeeks = input.Equals("latest", StringComparison.OrdinalIgnoreCase)
-            ? new List<int> { -1 }
-            : ParseNumbers(input);
+        var campaignWithNums = allCampaigns
+            .Select(c => {
+                var match = Regex.Match(c.Name, idRegexPattern, RegexOptions.IgnoreCase);
+                return new { Campaign = c, Num = match.Success ? int.Parse(match.Groups[1].Value) : -1 };
+            })
+            .Where(x => x.Num != -1)
+            .OrderBy(x => x.Num)
+            .ToList();
 
-        if (!requestedWeeks.Any()) return downloadedPaths;
+        if (!campaignWithNums.Any()) return downloadedPaths;
 
-        foreach (var weekNum in requestedWeeks)
+        var ranges = new List<(MapRef Start, MapRef End)>();
+        if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
-            var matches = new List<ICampaignItem>();
-            if (weekNum == -1)
-            {
-                var latest = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
-                if (latest != null) matches.Add(latest);
-            }
-            else
-            {
-                matches = campaigns.Where(c => Regex.IsMatch(c.Name, string.Format(searchRegexFormat, weekNum), RegexOptions.IgnoreCase)).ToList();
-            }
+            var latestNum = campaignWithNums.Max(x => x.Num);
+            ranges.Add((new MapRef(latestNum), new MapRef(latestNum)));
+        }
+        else if (input.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            var minNum = campaignWithNums.Min(x => x.Num);
+            var maxNum = campaignWithNums.Max(x => x.Num);
+            ranges.Add((new MapRef(minNum), new MapRef(maxNum)));
+        }
+        else
+        {
+            ranges = ParseMapRanges(input);
+        }
 
+        if (!ranges.Any()) return downloadedPaths;
+
+        var campaignsByNum = campaignWithNums.GroupBy(x => x.Num).ToDictionary(g => g.Key, g => g.ToList());
+        var relevantNums = campaignsByNum.Keys.Where(n => ranges.Any(r => n >= r.Start.Campaign && n <= r.End.Campaign)).OrderBy(n => n).ToList();
+
+        foreach (var num in relevantNums)
+        {
+            var matches = campaignsByNum[num];
             ICampaignItem? campaignItem = null;
-            if (matches.Count == 0)
+
+            if (matches.Count == 1 || !config.Interactive)
             {
-                _console.WriteLine($"Error: Could not find campaign {(weekNum == -1 ? "latest" : $"{displayName} {weekNum}")}. Skipping.");
-                continue;
-            }
-            else if (matches.Count == 1 || !config.Interactive)
-            {
-                campaignItem = matches[0];
+                campaignItem = matches[0].Campaign;
             }
             else
             {
-                var choice = await _console.SelectItemAsync($"Multiple campaigns found for {displayName} {weekNum}", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
+                var choice = await _console.SelectItemAsync($"Multiple campaigns found for {displayName} {num}", matches.Select(m => $"{TextFormatter.Deformat(m.Campaign.Name)} (ID: {m.Campaign.Id})"));
                 if (choice > 0)
                 {
-                    campaignItem = matches[choice - 1];
+                    campaignItem = matches[choice - 1].Campaign;
                 }
                 else continue;
             }
@@ -597,59 +608,163 @@ public class ToolboxApp
             var fullCampaign = await fetchOneFunc(campaignItem.Id);
             if (fullCampaign?.Playlist == null) continue;
 
-            var weekIdStr = weekNum == -1 ? Regex.Match(campaignItem.Name, idRegexPattern, RegexOptions.IgnoreCase).Groups[1].Value : weekNum.ToString();
-            if (string.IsNullOrEmpty(weekIdStr)) weekIdStr = campaignItem.Id.ToString();
+            var playlist = fullCampaign.Playlist.ToList();
+            var mapsToDownload = new List<(IMap map, int index)>();
 
+            for (int i = 0; i < playlist.Count; i++)
+            {
+                int mapNum = i + 1;
+                if (ranges.Any(r => IsInMapRange(num, mapNum, r.Start, r.End)))
+                {
+                    mapsToDownload.Add((playlist[i], i));
+                }
+            }
+
+            if (!mapsToDownload.Any()) continue;
+
+            var weekIdStr = num.ToString();
             var downloadDir = downloadDirFunc(weekIdStr);
-            downloadedPaths.AddRange(await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)prefixFunc(m, i, weekIdStr))), downloadDir, config));
+            downloadedPaths.AddRange(await DownloadAndFixMaps(
+                mapsToDownload.Select(m => (m.map.Name, (string?)m.map.FileName, (string?)m.map.FileUrl, (string?)prefixFunc(m.map, m.index, weekIdStr))),
+                downloadDir, config));
         }
         return downloadedPaths;
     }
 
+    private bool IsInMapRange(int campaignNum, int mapNum, MapRef start, MapRef end)
+    {
+        if (campaignNum < start.Campaign || campaignNum > end.Campaign) return false;
+        if (campaignNum == start.Campaign && start.Map.HasValue && mapNum < start.Map.Value) return false;
+        if (campaignNum == end.Campaign && end.Map.HasValue && mapNum > end.Map.Value) return false;
+        return true;
+    }
+
     public async Task<List<string>> HandleSeasonal(string input, Config config)
     {
+        var downloadedPaths = new List<string>();
         _console.WriteLine("Fetching available Seasonal campaigns...");
-        var campaigns = await FetchAllCampaigns(p => _api.GetSeasonalCampaignsAsync(p));
+        var allCampaigns = await FetchAllCampaigns(p => _api.GetSeasonalCampaignsAsync(p));
 
-        var matches = new List<ICampaignItem>();
+        var campaignRefs = allCampaigns
+            .Select(c => new { Campaign = c, Ref = ParseSeasonalRefFromCampaignName(c.Name) })
+            .Where(x => x.Ref != null)
+            .OrderBy(x => x.Ref)
+            .ToList();
+
+        var ranges = new List<(SeasonalRef Start, SeasonalRef End)>();
         if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
-            var latest = campaigns.OrderByDescending(c => c.Id).FirstOrDefault();
-            if (latest != null) matches.Add(latest);
-        }
-        else
-        {
-            matches = campaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
-        ICampaignItem? campaignItem = null;
-        if (matches.Count == 0)
-        {
-            _console.WriteLine($"Error: Could not find seasonal campaign matching '{input}'.");
-            return new List<string>();
-        }
-        else if (matches.Count == 1 || !config.Interactive)
-        {
-            campaignItem = matches[0];
-        }
-        else
-        {
-            var choice = await _console.SelectItemAsync("Multiple seasonal campaigns found", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
-            if (choice > 0)
+            if (campaignRefs.Any())
             {
-                campaignItem = matches[choice - 1];
+                var latest = campaignRefs.Last().Ref!;
+                ranges.Add((latest, latest));
             }
-            else return new List<string>();
+        }
+        else if (input.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            if (campaignRefs.Any())
+            {
+                ranges.Add((campaignRefs.First().Ref!, campaignRefs.Last().Ref!));
+            }
+        }
+        else
+        {
+            ranges = ParseSeasonalRanges(input);
         }
 
-        _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+        if (!ranges.Any())
+        {
+            // Fallback to name search
+            var matches = allCampaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!matches.Any())
+            {
+                _console.WriteLine($"Error: Could not find seasonal campaign matching '{input}'.");
+                return downloadedPaths;
+            }
 
-        var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
-        if (fullCampaign?.Playlist == null) return new List<string>();
+            ICampaignItem? campaignItem = null;
+            if (matches.Count == 1 || !config.Interactive)
+            {
+                campaignItem = matches[0];
+            }
+            else
+            {
+                var choice = await _console.SelectItemAsync("Multiple seasonal campaigns found", matches.Select(m => $"{TextFormatter.Deformat(m.Name)} (ID: {m.Id})"));
+                if (choice > 0)
+                {
+                    campaignItem = matches[choice - 1];
+                }
+                else return downloadedPaths;
+            }
 
-        var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
-        var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
-        return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+            _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
+            if (fullCampaign?.Playlist == null) return downloadedPaths;
+
+            var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
+            return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+        }
+
+        foreach (var campaignRef in campaignRefs)
+        {
+            var currentRef = campaignRef.Ref!;
+            bool campaignInRange = ranges.Any(r => IsInSeasonalRange(currentRef, r.Start, r.End));
+            if (!campaignInRange) continue;
+
+            var campaignItem = campaignRef.Campaign;
+            _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
+
+            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
+            if (fullCampaign?.Playlist == null) continue;
+
+            var playlist = fullCampaign.Playlist.ToList();
+            var mapsToDownload = new List<(IMap map, int index)>();
+
+            for (int i = 0; i < playlist.Count; i++)
+            {
+                int mapNum = i + 1;
+                if (ranges.Any(r => IsInSeasonalMapRange(currentRef, mapNum, r.Start, r.End)))
+                {
+                    mapsToDownload.Add((playlist[i], i));
+                }
+            }
+
+            if (!mapsToDownload.Any()) continue;
+
+            var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
+            downloadedPaths.AddRange(await DownloadAndFixMaps(
+                mapsToDownload.Select(m => (m.map.Name, (string?)m.map.FileName, (string?)m.map.FileUrl, (string?)$"{(m.index + 1):D2} - ")),
+                downloadDir, config));
+        }
+
+        return downloadedPaths;
+    }
+
+    private bool IsInSeasonalRange(SeasonalRef current, SeasonalRef start, SeasonalRef end)
+    {
+        var c = new SeasonalRef(current.Year, current.SeasonOrder);
+        var s = new SeasonalRef(start.Year, start.SeasonOrder);
+        var e = new SeasonalRef(end.Year, end.SeasonOrder);
+        return c.CompareTo(s) >= 0 && c.CompareTo(e) <= 0;
+    }
+
+    private bool IsInSeasonalMapRange(SeasonalRef currentCampaign, int mapNum, SeasonalRef start, SeasonalRef end)
+    {
+        if (!IsInSeasonalRange(currentCampaign, start, end)) return false;
+
+        if (currentCampaign.Year == start.Year && currentCampaign.SeasonOrder == start.SeasonOrder)
+        {
+            if (start.Map.HasValue && mapNum < start.Map.Value) return false;
+        }
+
+        if (currentCampaign.Year == end.Year && currentCampaign.SeasonOrder == end.SeasonOrder)
+        {
+            if (end.Map.HasValue && mapNum > end.Map.Value) return false;
+        }
+
+        return true;
     }
 
     public string FormatSeasonalFolderName(string campaignName)
@@ -679,6 +794,25 @@ public class ToolboxApp
         if (parts.Length == 2 && int.TryParse(parts[0], out clubId) && int.TryParse(parts[1], out campaignId))
         {
             return await DownloadClubCampaign(clubId, campaignId, config);
+        }
+        else if (int.TryParse(input, out clubId))
+        {
+            _console.WriteLine($"Fetching all campaigns for Club ID {clubId}...");
+            var allCampaigns = await FetchAllCampaigns(p => _api.GetClubCampaignsAsync(p));
+            var clubCampaigns = allCampaigns.Where(c => c.ClubId == clubId).ToList();
+            if (!clubCampaigns.Any())
+            {
+                _console.WriteLine($"No campaigns found for Club ID {clubId} (searched all pages).");
+                return new List<string>();
+            }
+
+            var downloadedPaths = new List<string>();
+            foreach (var campaign in clubCampaigns)
+            {
+                _console.WriteLine($"Found: {TextFormatter.Deformat(campaign.Name)} (ID: {campaign.Id})");
+                downloadedPaths.AddRange(await DownloadClubCampaign(clubId, campaign.Id, config));
+            }
+            return downloadedPaths;
         }
         else
         {
@@ -840,79 +974,144 @@ public class ToolboxApp
     public async Task<List<string>> HandleTrackOfTheDay(string dateInput, Config config)
     {
         var now = _dateTime.UtcNow;
-        int targetYear = now.Year;
-        int targetMonth = now.Month;
-        var requestedDays = new List<int>();
-        bool isLatest = dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase);
+        var ranges = new List<(DateTime Start, DateTime End)>();
 
-        if (isLatest)
+        if (dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
-            requestedDays.Add(now.Day);
+            var latestDate = now.Date;
+            if (now.Hour < TotdReleaseHour) latestDate = latestDate.AddDays(-1);
+            ranges.Add((latestDate, latestDate));
+        }
+        else if (dateInput.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            ranges.Add((new DateTime(2020, 7, 1), now.Date));
         }
         else
         {
-            var parts = dateInput.Split(new[] { '-', '/', ' ', '.' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2)
-            {
-                if (int.TryParse(parts[0], out var y) && int.TryParse(parts[1], out var m))
-                {
-                    targetYear = y;
-                    targetMonth = m;
+            ranges = ParseToTdRanges(dateInput, now);
+        }
 
-                    if (parts.Length == 2)
+        if (!ranges.Any()) return new List<string>();
+
+        var downloadedPaths = new List<string>();
+        var allDaysToDownload = new List<DateTime>();
+        foreach (var range in ranges)
+        {
+            for (var d = range.Start; d <= range.End; d = d.AddDays(1))
+            {
+                if (!allDaysToDownload.Contains(d)) allDaysToDownload.Add(d);
+            }
+        }
+
+        var daysByMonth = allDaysToDownload.GroupBy(d => new { d.Year, d.Month }).OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month);
+
+        foreach (var monthGroup in daysByMonth)
+        {
+            int monthOffset = (now.Year - monthGroup.Key.Year) * 12 + (now.Month - monthGroup.Key.Month);
+            var response = await _api.GetTrackOfTheDaysAsync(monthOffset);
+            if (response?.Days == null) continue;
+
+            var targetDays = monthGroup.Select(d => d.Day).ToList();
+            var totdDays = response.Days.Where(d => d.Map != null && targetDays.Contains(d.MonthDay)).OrderBy(d => d.MonthDay).ToList();
+
+            if (!totdDays.Any()) continue;
+
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
+            downloadedPaths.AddRange(await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config));
+        }
+
+        return downloadedPaths;
+    }
+
+    internal List<(DateTime Start, DateTime End)> ParseToTdRanges(string input, DateTime now)
+    {
+        var ranges = new List<(DateTime Start, DateTime End)>();
+        var parts = input.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmedPart = part.Trim();
+            var rangeParts = trimmedPart.Split('-');
+            if (rangeParts.Length == 1)
+            {
+                var r = ParseToTdDate(rangeParts[0], now);
+                if (r.HasValue) ranges.Add(r.Value);
+            }
+            else if (rangeParts.Length == 2)
+            {
+                var startStr = rangeParts[0].Trim();
+                var endStr = rangeParts[1].Trim();
+
+                var start = ParseToTdDate(startStr, now);
+                if (start.HasValue)
+                {
+                    // Special case: yyyy.mm.dd-dd
+                    if (Regex.IsMatch(endStr, @"^\d{1,2}$") && int.TryParse(endStr, out var endDay))
                     {
-                        // Whole month
+                        var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
+                        ranges.Add((start.Value.Start, end));
                     }
-                    else if (parts.Length == 3)
+                    // Special case: yyyy.mm.dd-mm.dd
+                    else if (Regex.IsMatch(endStr, @"^\d{1,2}[\.\/]\d{1,2}$"))
                     {
-                        if (int.TryParse(parts[2], out var d)) requestedDays.Add(d);
-                    }
-                    else if (parts.Length >= 4)
-                    {
-                        if (int.TryParse(parts[2], out var dStart) && int.TryParse(parts[3], out var dEnd))
+                        var endParts = endStr.Split(new[] { '.', '/' });
+                        if (int.TryParse(endParts[0], out var endM) && int.TryParse(endParts[1], out var endD))
                         {
-                            for (int d = Math.Min(dStart, dEnd); d <= Math.Max(dStart, dEnd); d++)
-                                requestedDays.Add(d);
+                             var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
+                             end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
+                             ranges.Add((start.Value.Start, end));
+                        }
+                    }
+                    else
+                    {
+                        var end = ParseToTdDate(endStr, now);
+                        if (end.HasValue)
+                        {
+                            if (start.Value.Start <= end.Value.End) ranges.Add((start.Value.Start, end.Value.End));
+                            else ranges.Add((end.Value.Start, start.Value.End));
                         }
                     }
                 }
             }
         }
+        return ranges;
+    }
 
-        int monthOffset = (now.Year - targetYear) * 12 + (now.Month - targetMonth);
-        var response = await _api.GetTrackOfTheDaysAsync(monthOffset);
-        if (response?.Days == null) return new List<string>();
-
-        var totdDays = response.Days.Where(d => d.Map != null);
-        if (requestedDays.Any())
+    private (DateTime Start, DateTime End)? ParseToTdDate(string s, DateTime now)
+    {
+        s = s.Trim();
+        // yyyy.mm.dd
+        var match = Regex.Match(s, @"^(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})$");
+        if (match.Success)
         {
-            var filteredDays = totdDays.Where(d => requestedDays.Contains(d.MonthDay)).ToList();
-
-            if (isLatest && !filteredDays.Any() && now.Hour < TotdReleaseHour)
+            int y = int.Parse(match.Groups[1].Value);
+            int m = int.Parse(match.Groups[2].Value);
+            int d = int.Parse(match.Groups[3].Value);
+            if (m >= 1 && m <= 12)
             {
-                var yesterday = now.AddDays(-1);
-                int yesterdayMonthOffset = (now.Year - yesterday.Year) * 12 + (now.Month - yesterday.Month);
-
-                var yesterdayResponse = (yesterdayMonthOffset == monthOffset) ? response : await _api.GetTrackOfTheDaysAsync(yesterdayMonthOffset);
-
-                if (yesterdayResponse?.Days != null)
-                {
-                    filteredDays = yesterdayResponse.Days.Where(d => d.Map != null && d.MonthDay == yesterday.Day).ToList();
-                    if (filteredDays.Any())
-                    {
-                        var downloadDirYesterday = Path.Combine(_defaultMapsFolder, "Track of the Day", yesterdayResponse.Year.ToString(), yesterdayResponse.Month.ToString("D2"));
-                        return await DownloadAndFixMaps(filteredDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDirYesterday, config);
-                    }
-                }
+                int daysInMonth = DateTime.DaysInMonth(y, m);
+                var dt = new DateTime(y, m, Math.Min(d, daysInMonth));
+                return (dt, dt);
             }
-
-            totdDays = filteredDays;
         }
-
-        if (!totdDays.Any()) return new List<string>();
-
-        var downloadDir = Path.Combine(_defaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
-        return await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config);
+        // yyyy.mm
+        match = Regex.Match(s, @"^(\d{4})[\.\/\-](\d{1,2})$");
+        if (match.Success)
+        {
+            int y = int.Parse(match.Groups[1].Value);
+            int m = int.Parse(match.Groups[2].Value);
+            if (m >= 1 && m <= 12)
+            {
+                return (new DateTime(y, m, 1), new DateTime(y, m, DateTime.DaysInMonth(y, m)));
+            }
+        }
+        // yyyy
+        match = Regex.Match(s, @"^(\d{4})$");
+        if (match.Success)
+        {
+            int y = int.Parse(match.Groups[1].Value);
+            return (new DateTime(y, 1, 1), new DateTime(y, 12, 31));
+        }
+        return null;
     }
 
     public async Task<List<string>> DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps, string downloadDir, Config config)
@@ -1005,6 +1204,133 @@ public class ToolboxApp
         }
         return result.OrderBy(n => n).ToList();
     }
+
+    internal List<(MapRef Start, MapRef End)> ParseMapRanges(string input)
+    {
+        var ranges = new List<(MapRef Start, MapRef End)>();
+        var parts = input.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var rangeParts = part.Split('-');
+            if (rangeParts.Length == 1)
+            {
+                var mr = ParseMapRef(rangeParts[0]);
+                if (mr != null) ranges.Add((mr, mr));
+            }
+            else if (rangeParts.Length == 2)
+            {
+                var start = ParseMapRef(rangeParts[0]);
+                var end = ParseMapRef(rangeParts[1]);
+                if (start != null && end != null)
+                {
+                    if (start.CompareTo(end) <= 0) ranges.Add((start, end));
+                    else ranges.Add((end, start));
+                }
+            }
+        }
+        return ranges;
+    }
+
+    internal MapRef? ParseMapRef(string s)
+    {
+        var match = Regex.Match(s.Trim(), @"^(\d+)(?:\.(\d+))?$");
+        if (match.Success)
+        {
+            int camp = int.Parse(match.Groups[1].Value);
+            int? map = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : null;
+            return new MapRef(camp, map);
+        }
+        return null;
+    }
+
+    internal List<(SeasonalRef Start, SeasonalRef End)> ParseSeasonalRanges(string input)
+    {
+        var ranges = new List<(SeasonalRef Start, SeasonalRef End)>();
+        var parts = input.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmedPart = part.Trim();
+            var rangeParts = Regex.Split(trimmedPart, @"\s*-\s*");
+            if (rangeParts.Length == 1)
+            {
+                var sr = ParseSeasonalRef(rangeParts[0]);
+                if (sr != null)
+                {
+                    if (Regex.IsMatch(rangeParts[0].Trim(), @"^\d{4}$"))
+                    {
+                        ranges.Add((new SeasonalRef(sr.Year, 1), new SeasonalRef(sr.Year, 4)));
+                    }
+                    else
+                    {
+                        ranges.Add((sr, sr));
+                    }
+                }
+            }
+            else if (rangeParts.Length == 2)
+            {
+                var start = ParseSeasonalRef(rangeParts[0]);
+                var end = ParseSeasonalRef(rangeParts[1]);
+                if (start != null && end != null)
+                {
+                    if (Regex.IsMatch(rangeParts[0].Trim(), @"^\d{4}$")) start = new SeasonalRef(start.Year, 1);
+                    if (Regex.IsMatch(rangeParts[1].Trim(), @"^\d{4}$")) end = new SeasonalRef(end.Year, 4);
+
+                    if (start.CompareTo(end) <= 0) ranges.Add((start, end));
+                    else ranges.Add((end, start));
+                }
+            }
+        }
+        return ranges;
+    }
+
+    internal SeasonalRef? ParseSeasonalRef(string s)
+    {
+        s = s.Trim();
+        var match = Regex.Match(s, @"^(Winter|Spring|Summer|Fall)\s+(\d{4})(?:\.(\d+))?$", RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            string season = match.Groups[1].Value;
+            int year = int.Parse(match.Groups[2].Value);
+            int? map = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : null;
+            int order = GetSeasonOrder(season);
+            return new SeasonalRef(year, order, map);
+        }
+        match = Regex.Match(s, @"^(\d{4})$");
+        if (match.Success)
+        {
+            int year = int.Parse(match.Groups[1].Value);
+            return new SeasonalRef(year, 1);
+        }
+        return null;
+    }
+
+    internal SeasonalRef? ParseSeasonalRefFromCampaignName(string campaignName)
+    {
+        var match = Regex.Match(campaignName, @"(Winter|Spring|Summer|Fall)\s+(\d{4})", RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            string season = match.Groups[1].Value;
+            int year = int.Parse(match.Groups[2].Value);
+            int order = GetSeasonOrder(season);
+            return new SeasonalRef(year, order);
+        }
+        match = Regex.Match(campaignName, @"(\d{4})", RegexOptions.IgnoreCase);
+        if (match.Success)
+        {
+            int year = int.Parse(match.Groups[1].Value);
+            return new SeasonalRef(year, 1);
+        }
+        return null;
+    }
+
+    private int GetSeasonOrder(string season) => season.ToLower() switch
+    {
+        "winter" => 1,
+        "spring" => 2,
+        "summer" => 3,
+        "fall" => 4,
+        _ => 0
+    };
 
     public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter)
     {
@@ -1154,3 +1480,29 @@ public class ToolboxApp
     }
 }
 
+internal record MapRef(int Campaign, int? Map = null) : IComparable<MapRef>
+{
+    public int CompareTo(MapRef? other)
+    {
+        if (other == null) return 1;
+        if (Campaign != other.Campaign) return Campaign.CompareTo(other.Campaign);
+        if (!Map.HasValue && !other.Map.HasValue) return 0;
+        if (!Map.HasValue) return -1;
+        if (!other.Map.HasValue) return 1;
+        return Map.Value.CompareTo(other.Map.Value);
+    }
+}
+
+internal record SeasonalRef(int Year, int SeasonOrder, int? Map = null) : IComparable<SeasonalRef>
+{
+    public int CompareTo(SeasonalRef? other)
+    {
+        if (other == null) return 1;
+        if (Year != other.Year) return Year.CompareTo(other.Year);
+        if (SeasonOrder != other.SeasonOrder) return SeasonOrder.CompareTo(other.SeasonOrder);
+        if (!Map.HasValue && !other.Map.HasValue) return 0;
+        if (!Map.HasValue) return -1;
+        if (!other.Map.HasValue) return 1;
+        return Map.Value.CompareTo(other.Map.Value);
+    }
+}
