@@ -829,8 +829,8 @@ public class ToolboxApp
             }
             else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
             {
-                 var match = Regex.Match(trimmed, @"/mappack/(\d+)");
-                 if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+                var match = Regex.Match(trimmed, @"/mappack/(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
             }
             else if (int.TryParse(trimmed, out var num)) result.Add(num);
         }

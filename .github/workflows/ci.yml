@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+    - name: Restore dependencies
+      run: dotnet restore -p:PublishAot=false
+    - name: Check formatting
+      run: dotnet format --verify-no-changes --no-restore
+
+  build:
+    needs: lint
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            executable_suffix: ""
+          - os: windows-latest
+            rid: win-x64
+            executable_suffix: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang zlib1g-dev libx11-dev libice-dev libsm-dev libfontconfig1-dev
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore -c Release
+
+    - name: Test
+      run: dotnet test --no-build -c Release
+
+    - name: Publish CLI (NativeAOT)
+      run: dotnet publish src/Trackmania2020Toolbox.CLI/Trackmania2020Toolbox.CLI.csproj -c Release -r ${{ matrix.rid }} /p:PublishAot=true /p:InvariantGlobalization=true --no-restore -o publish-cli
+
+    - name: Publish Desktop (NativeAOT)
+      run: dotnet publish src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj -c Release -r ${{ matrix.rid }} /p:PublishAot=true /p:InvariantGlobalization=true --no-restore -o publish-desktop
+
+    - name: Upload CLI Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Trackmania2020Toolbox-CLI-${{ matrix.rid }}
+        path: publish-cli/Trackmania2020Toolbox.CLI${{ matrix.executable_suffix }}
+
+    - name: Upload Desktop Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Trackmania2020Toolbox-Desktop-${{ matrix.rid }}
+        path: publish-desktop/Trackmania2020Toolbox.Desktop${{ matrix.executable_suffix }}
