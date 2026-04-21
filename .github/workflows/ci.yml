@@ -10,9 +10,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
     - name: Restore dependencies
@@ -34,9 +34,9 @@ jobs:
             executable_suffix: ".exe"
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
 
@@ -62,13 +62,13 @@ jobs:
       run: dotnet publish src/Trackmania2020Toolbox.Desktop/Trackmania2020Toolbox.Desktop.csproj -c Release -r ${{ matrix.rid }} /p:PublishAot=true /p:InvariantGlobalization=true --no-restore -o publish-desktop
 
     - name: Upload CLI Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: Trackmania2020Toolbox-CLI-${{ matrix.rid }}
         path: publish-cli/Trackmania2020Toolbox.CLI${{ matrix.executable_suffix }}
 
     - name: Upload Desktop Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: Trackmania2020Toolbox-Desktop-${{ matrix.rid }}
         path: publish-desktop/Trackmania2020Toolbox.Desktop${{ matrix.executable_suffix }}
