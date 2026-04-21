@@ -132,19 +132,22 @@ public partial class MainWindow : Window
         this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxMaps(_tmxInput.Text ?? "", GetConfig()));
         this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxPacks(_tmxPackInput.Text ?? "", GetConfig()));
         this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxRandom(GetConfig()));
-        this.FindControl<Button>("TmxSearchBtn")!.Click += async (_, _) => {
+        this.FindControl<Button>("TmxSearchBtn")!.Click += async (_, _) =>
+        {
             string sort = (_tmxSortCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "name";
             bool desc = (_tmxOrderCombo.SelectedIndex == 1);
             await RunTask(() => _app.HandleTmxSearch(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig()));
         };
 
-        this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) => {
-             AppendLog("Running batch fixer..." + Environment.NewLine);
-             await Task.Run(() => _app.RunBatchFixer(GetConfig()));
+        this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) =>
+        {
+            AppendLog("Running batch fixer..." + Environment.NewLine);
+            await Task.Run(() => _app.RunBatchFixer(GetConfig()));
         };
         this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedals(_playerIdInput.Text ?? "", _medalsCampaignInput.Text));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();
-        this.FindControl<Button>("BrowseFixerBtn")!.Click += async (_, _) => {
+        this.FindControl<Button>("BrowseFixerBtn")!.Click += async (_, _) =>
+        {
             var result = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions
             {
                 Title = "Select Fixer Folder",
@@ -152,7 +155,8 @@ public partial class MainWindow : Window
             });
             if (result.Count > 0) _fixerFolderInput.Text = result[0].Path.LocalPath;
         };
-        this.FindControl<Button>("BrowseGameBtn")!.Click += async (_, _) => {
+        this.FindControl<Button>("BrowseGameBtn")!.Click += async (_, _) =>
+        {
             var result = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
             {
                 Title = "Select Trackmania.exe",
@@ -161,7 +165,8 @@ public partial class MainWindow : Window
             });
             if (result.Count > 0) _gamePathInput.Text = result[0].Path.LocalPath;
         };
-        this.FindControl<Button>("BrowseBrowserFolderBtn")!.Click += async (_, _) => {
+        this.FindControl<Button>("BrowseBrowserFolderBtn")!.Click += async (_, _) =>
+        {
             var result = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions
             {
                 Title = "Select Browser Folder",
@@ -175,24 +180,29 @@ public partial class MainWindow : Window
         _browserSearchInput.TextChanged += (_, _) => RefreshBrowser();
         _browserSortCombo.SelectionChanged += (_, _) => RefreshBrowser();
         this.FindControl<Button>("BrowserPlayBtn")!.Click += (_, _) => PlaySelectedMap();
-        _browserList.DoubleTapped += (_, _) => {
+        _browserList.DoubleTapped += (_, _) =>
+        {
             if (_doubleClickToPlayCheck.IsChecked ?? true) HandleBrowserAction();
         };
-        _browserList.KeyDown += (_, e) => {
-            if (e.Key == Key.Enter) {
+        _browserList.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
                 if (_enterToPlayCheck.IsChecked ?? true) HandleBrowserAction();
                 e.Handled = true;
             }
         };
 
-        this.FindControl<TabControl>("MainTabControl")!.SelectionChanged += (s, e) => {
+        this.FindControl<TabControl>("MainTabControl")!.SelectionChanged += (s, e) =>
+        {
             if (e.AddedItems.Count > 0 && e.AddedItems[0] is TabItem ti && ti.Header?.ToString() == "Browser")
             {
                 RefreshBrowser();
             }
         };
 
-        this.FindControl<Button>("SelectionConfirmBtn")!.Click += (_, _) => {
+        this.FindControl<Button>("SelectionConfirmBtn")!.Click += (_, _) =>
+        {
             if (_selectionList.SelectedIndex >= 0)
             {
                 _selectionTcs?.SetResult(_selectionList.SelectedIndex + 1);
@@ -200,7 +210,8 @@ public partial class MainWindow : Window
             }
         };
 
-        this.FindControl<Button>("SelectionCancelBtn")!.Click += (_, _) => {
+        this.FindControl<Button>("SelectionCancelBtn")!.Click += (_, _) =>
+        {
             _selectionTcs?.SetResult(0);
             _selectionOverlay.IsVisible = false;
         };
@@ -210,7 +221,8 @@ public partial class MainWindow : Window
     {
         _selectionTcs = new TaskCompletionSource<int>();
 
-        await Dispatcher.UIThread.InvokeAsync(() => {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
             _selectionTitle.Text = title;
             _selectionList.ItemsSource = items.ToList();
             _selectionList.SelectedIndex = -1;
@@ -382,7 +394,8 @@ public partial class MainWindow : Window
             {
                 if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
 
-                _browserItems.Add(new BrowserItem {
+                _browserItems.Add(new BrowserItem
+                {
                     DisplayName = dir.Name,
                     FullPath = dir.Path,
                     IsDirectory = true
@@ -390,7 +403,8 @@ public partial class MainWindow : Window
             }
 
             var files = Directory.GetFiles(_currentBrowserDirectory, "*.Map.Gbx")
-                .Select(f => {
+                .Select(f =>
+                {
                     var fn = Path.GetFileName(f);
                     return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
                 });
@@ -404,7 +418,8 @@ public partial class MainWindow : Window
 
             foreach (var file in sortedFiles)
             {
-                _browserItems.Add(new BrowserItem {
+                _browserItems.Add(new BrowserItem
+                {
                     DisplayName = file.DisplayName,
                     FullPath = file.Path,
                     IsDirectory = false
