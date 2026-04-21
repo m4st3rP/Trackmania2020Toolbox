@@ -552,7 +552,8 @@ public class ToolboxApp
         var allCampaigns = await FetchAllCampaigns(fetchAllFunc);
 
         var campaignWithNums = allCampaigns
-            .Select(c => {
+            .Select(c =>
+            {
                 var match = Regex.Match(c.Name, idRegexPattern, RegexOptions.IgnoreCase);
                 return new { Campaign = c, Num = match.Success ? int.Parse(match.Groups[1].Value) : -1 };
             })
@@ -963,8 +964,8 @@ public class ToolboxApp
             }
             else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
             {
-                 var match = Regex.Match(trimmed, @"/mappack/(\d+)");
-                 if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+                var match = Regex.Match(trimmed, @"/mappack/(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
             }
             else if (int.TryParse(trimmed, out var num)) result.Add(num);
         }
@@ -1056,9 +1057,9 @@ public class ToolboxApp
                         var endParts = endStr.Split(new[] { '.', '/' });
                         if (int.TryParse(endParts[0], out var endM) && int.TryParse(endParts[1], out var endD))
                         {
-                             var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
-                             end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
-                             ranges.Add((start.Value.Start, end));
+                            var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
+                            end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
+                            ranges.Add((start.Value.Start, end));
                         }
                     }
                     else
