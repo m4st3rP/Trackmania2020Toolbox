@@ -33,7 +33,7 @@ public class RealConsole : IConsole
 
 public static class TrackmaniaCLI
 {
-    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (+https://github.com/AI-Citizen/Trackmania2020Toolbox)";
+    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (+https://github.com/m4st3rP/Trackmania2020Toolbox)";
     public static readonly HttpClient HttpClient = new HttpClient();
 
     public static string GetScriptDirectory() => AppDomain.CurrentDomain.BaseDirectory;
