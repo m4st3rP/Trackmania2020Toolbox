@@ -241,19 +241,22 @@ public partial class MainWindow : Window
     private Config GetConfig()
     {
         return new Config(
-            null, null, null, null, null,
-            null, null, null, null, "name", false, false,
-            null, null,
-            _fixerFolderInput.Text ?? _app._defaultMapsFolder,
-            true, // Use explicit folder
-            _updateTitleCheck.IsChecked ?? true,
-            _convertMapTypeCheck.IsChecked ?? true,
-            _dryRunCheck.IsChecked ?? false,
-            _forceOverwriteCheck.IsChecked ?? false,
-            true, // interactive
-            _playAfterDownloadCheck.IsChecked ?? false,
-            null,
-            new List<string>()
+            new DownloaderConfig(null, null, null, null, null, null, null),
+            new TmxConfig(null, null, null, null, "name", false, false),
+            new FixerConfig(
+                _fixerFolderInput.Text ?? _app._defaultMapsFolder,
+                true, // Use explicit folder
+                _updateTitleCheck.IsChecked ?? true,
+                _convertMapTypeCheck.IsChecked ?? true,
+                _dryRunCheck.IsChecked ?? false
+            ),
+            new AppConfig(
+                _forceOverwriteCheck.IsChecked ?? false,
+                true, // interactive
+                _playAfterDownloadCheck.IsChecked ?? false,
+                null,
+                new List<string>()
+            )
         );
     }
 

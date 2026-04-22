@@ -84,12 +84,28 @@ public interface IConsole
     Task<int> SelectItemAsync(string title, IEnumerable<string> items);
 }
 
-public record Config(
+public record DownloaderConfig(
     string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
-    string? TmxMaps, string? TmxPacks, string? TmxSearch, string? TmxAuthor, string TmxSort, bool TmxDesc, bool TmxRandom,
-    string? ExportMedalsPlayerId, string? ExportMedalsCampaign,
-    string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun,
+    string? ExportMedalsPlayerId, string? ExportMedalsCampaign
+);
+
+public record TmxConfig(
+    string? TmxMaps, string? TmxPacks, string? TmxSearch, string? TmxAuthor, string TmxSort, bool TmxDesc, bool TmxRandom
+);
+
+public record FixerConfig(
+    string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun
+);
+
+public record AppConfig(
     bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
+);
+
+public record Config(
+    DownloaderConfig Downloader,
+    TmxConfig Tmx,
+    FixerConfig Fixer,
+    AppConfig App
 );
 
 public class TrackmaniaApiWrapper : ITrackmaniaApi
@@ -294,19 +310,20 @@ public class RealMapFixer : IMapFixer
 {
     public bool ProcessFile(string filePath, Config cfg)
     {
-        if (!cfg.UpdateTitle && !cfg.ConvertPlatformMapType) return false;
+        var fixerCfg = cfg.Fixer;
+        if (!fixerCfg.UpdateTitle && !fixerCfg.ConvertPlatformMapType) return false;
 
         var gbx = Gbx.Parse<CGameCtnChallenge>(filePath);
         var map = gbx.Node;
         bool changed = false;
 
-        if (cfg.UpdateTitle && map.TitleId == "OrbitalDev@falguiere")
+        if (fixerCfg.UpdateTitle && map.TitleId == "OrbitalDev@falguiere")
         {
             map.TitleId = "TMStadium";
             changed = true;
         }
 
-        if (cfg.ConvertPlatformMapType && map.MapType == "TrackMania\\TM_Platform")
+        if (fixerCfg.ConvertPlatformMapType && map.MapType == "TrackMania\\TM_Platform")
         {
             map.MapType = "TrackMania\\TM_Race";
             changed = true;
@@ -314,7 +331,7 @@ public class RealMapFixer : IMapFixer
 
         if (changed)
         {
-            if (!cfg.DryRun)
+            if (!fixerCfg.DryRun)
             {
                 gbx.Save(filePath);
             }
@@ -358,88 +375,93 @@ public class ToolboxApp
 
     public async Task RunAsync(Config config)
     {
-        if (config.SetGamePath != null)
+        var appCfg = config.App;
+        var dlCfg = config.Downloader;
+        var tmxCfg = config.Tmx;
+        var fixerCfg = config.Fixer;
+
+        if (appCfg.SetGamePath != null)
         {
-            SaveGamePath(config.SetGamePath);
-            if (!config.Play && config.WeeklyShorts == null && config.WeeklyGrands == null &&
-                config.Seasonal == null && config.ClubCampaign == null && config.ToTDDate == null &&
-                config.ExportMedalsPlayerId == null && !config.ExplicitFolder && config.ExtraPaths.Count == 0)
+            SaveGamePath(appCfg.SetGamePath);
+            if (!appCfg.Play && dlCfg.WeeklyShorts == null && dlCfg.WeeklyGrands == null &&
+                dlCfg.Seasonal == null && dlCfg.ClubCampaign == null && dlCfg.ToTDDate == null &&
+                dlCfg.ExportMedalsPlayerId == null && !fixerCfg.ExplicitFolder && appCfg.ExtraPaths.Count == 0)
                 return;
         }
 
         var mapPaths = new List<string>();
         bool downloadActionTaken = false;
 
-        if (config.WeeklyShorts != null)
+        if (dlCfg.WeeklyShorts != null)
         {
-            mapPaths.AddRange(await HandleWeeklyShorts(config.WeeklyShorts, config));
+            mapPaths.AddRange(await HandleWeeklyShorts(dlCfg.WeeklyShorts, config));
             downloadActionTaken = true;
         }
 
-        if (config.WeeklyGrands != null)
+        if (dlCfg.WeeklyGrands != null)
         {
-            mapPaths.AddRange(await HandleWeeklyGrands(config.WeeklyGrands, config));
+            mapPaths.AddRange(await HandleWeeklyGrands(dlCfg.WeeklyGrands, config));
             downloadActionTaken = true;
         }
 
-        if (config.Seasonal != null)
+        if (dlCfg.Seasonal != null)
         {
-            mapPaths.AddRange(await HandleSeasonal(config.Seasonal, config));
+            mapPaths.AddRange(await HandleSeasonal(dlCfg.Seasonal, config));
             downloadActionTaken = true;
         }
 
-        if (config.ClubCampaign != null)
+        if (dlCfg.ClubCampaign != null)
         {
-            mapPaths.AddRange(await HandleClubCampaign(config.ClubCampaign, config));
+            mapPaths.AddRange(await HandleClubCampaign(dlCfg.ClubCampaign, config));
             downloadActionTaken = true;
         }
 
-        if (config.ToTDDate != null)
+        if (dlCfg.ToTDDate != null)
         {
-            mapPaths.AddRange(await HandleTrackOfTheDay(config.ToTDDate, config));
+            mapPaths.AddRange(await HandleTrackOfTheDay(dlCfg.ToTDDate, config));
             downloadActionTaken = true;
         }
 
-        if (config.TmxMaps != null)
+        if (tmxCfg.TmxMaps != null)
         {
-            mapPaths.AddRange(await HandleTmxMaps(config.TmxMaps, config));
+            mapPaths.AddRange(await HandleTmxMaps(tmxCfg.TmxMaps, config));
             downloadActionTaken = true;
         }
 
-        if (config.TmxPacks != null)
+        if (tmxCfg.TmxPacks != null)
         {
-            mapPaths.AddRange(await HandleTmxPacks(config.TmxPacks, config));
+            mapPaths.AddRange(await HandleTmxPacks(tmxCfg.TmxPacks, config));
             downloadActionTaken = true;
         }
 
-        if (config.TmxSearch != null || config.TmxAuthor != null)
+        if (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null)
         {
-            mapPaths.AddRange(await HandleTmxSearch(config.TmxSearch, config.TmxAuthor, config.TmxSort, config.TmxDesc, config));
+            mapPaths.AddRange(await HandleTmxSearch(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config));
             downloadActionTaken = true;
         }
 
-        if (config.TmxRandom)
+        if (tmxCfg.TmxRandom)
         {
             mapPaths.AddRange(await HandleTmxRandom(config));
             downloadActionTaken = true;
         }
 
-        if (config.ExportMedalsPlayerId != null)
+        if (dlCfg.ExportMedalsPlayerId != null)
         {
-            await HandleExportCampaignMedals(config.ExportMedalsPlayerId, config.ExportMedalsCampaign);
+            await HandleExportCampaignMedals(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign);
             downloadActionTaken = true;
         }
 
-        if (config.ExplicitFolder || config.ExtraPaths.Count > 0 || (!downloadActionTaken && config.SetGamePath == null))
+        if (fixerCfg.ExplicitFolder || appCfg.ExtraPaths.Count > 0 || (!downloadActionTaken && appCfg.SetGamePath == null))
         {
-            var fixedPaths = RunBatchFixer(config, config.ExtraPaths);
+            var fixedPaths = RunBatchFixer(config, appCfg.ExtraPaths);
             foreach (var path in fixedPaths)
             {
                 if (!mapPaths.Contains(path)) mapPaths.Add(path);
             }
         }
 
-        if (config.Play)
+        if (appCfg.Play)
         {
             LaunchGame(mapPaths);
         }
@@ -590,7 +612,7 @@ public class ToolboxApp
             var matches = campaignsByNum[num];
             ICampaignItem? campaignItem = null;
 
-            if (matches.Count == 1 || !config.Interactive)
+            if (matches.Count == 1 || !config.App.Interactive)
             {
                 campaignItem = matches[0].Campaign;
             }
@@ -684,7 +706,7 @@ public class ToolboxApp
             }
 
             ICampaignItem? campaignItem = null;
-            if (matches.Count == 1 || !config.Interactive)
+            if (matches.Count == 1 || !config.App.Interactive)
             {
                 campaignItem = matches[0];
             }
@@ -827,7 +849,7 @@ public class ToolboxApp
             {
                 _console.WriteLine("No matching club campaigns found.");
             }
-            else if (matches.Count == 1 || !config.Interactive)
+            else if (matches.Count == 1 || !config.App.Interactive)
             {
                 var match = matches[0];
                 _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} (ID: {match.ClubId}/{match.Id})");
@@ -919,7 +941,7 @@ public class ToolboxApp
             return new List<string>();
         }
 
-        if (!config.Interactive)
+        if (!config.App.Interactive)
         {
             var match = results[0];
             _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} by {match.AuthorName} (ID: {match.Id})");
@@ -1027,53 +1049,46 @@ public class ToolboxApp
     internal List<(DateTime Start, DateTime End)> ParseToTdRanges(string input, DateTime now)
     {
         var ranges = new List<(DateTime Start, DateTime End)>();
-        var parts = input.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        ForEachRange(input, new[] { ',' }, (s, e) =>
         {
-            var trimmedPart = part.Trim();
-            var rangeParts = trimmedPart.Split('-');
-            if (rangeParts.Length == 1)
-            {
-                var r = ParseToTdDate(rangeParts[0], now);
-                if (r.HasValue) ranges.Add(r.Value);
-            }
-            else if (rangeParts.Length == 2)
-            {
-                var startStr = rangeParts[0].Trim();
-                var endStr = rangeParts[1].Trim();
+            var start = ParseToTdDate(s, now);
+            if (!start.HasValue) return;
 
-                var start = ParseToTdDate(startStr, now);
-                if (start.HasValue)
+            if (e == null)
+            {
+                ranges.Add(start.Value);
+            }
+            else
+            {
+                var endStr = e.Trim();
+                // Special case: yyyy.mm.dd-dd
+                if (Regex.IsMatch(endStr, @"^\d{1,2}$") && int.TryParse(endStr, out var endDay))
                 {
-                    // Special case: yyyy.mm.dd-dd
-                    if (Regex.IsMatch(endStr, @"^\d{1,2}$") && int.TryParse(endStr, out var endDay))
+                    var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
+                    ranges.Add((start.Value.Start, end));
+                }
+                // Special case: yyyy.mm.dd-mm.dd
+                else if (Regex.IsMatch(endStr, @"^\d{1,2}[\.\/]\d{1,2}$"))
+                {
+                    var endParts = endStr.Split(new[] { '.', '/' });
+                    if (int.TryParse(endParts[0], out var endM) && int.TryParse(endParts[1], out var endD))
                     {
-                        var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
+                        var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
+                        end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
                         ranges.Add((start.Value.Start, end));
                     }
-                    // Special case: yyyy.mm.dd-mm.dd
-                    else if (Regex.IsMatch(endStr, @"^\d{1,2}[\.\/]\d{1,2}$"))
+                }
+                else
+                {
+                    var end = ParseToTdDate(endStr, now);
+                    if (end.HasValue)
                     {
-                        var endParts = endStr.Split(new[] { '.', '/' });
-                        if (int.TryParse(endParts[0], out var endM) && int.TryParse(endParts[1], out var endD))
-                        {
-                            var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
-                            end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
-                            ranges.Add((start.Value.Start, end));
-                        }
-                    }
-                    else
-                    {
-                        var end = ParseToTdDate(endStr, now);
-                        if (end.HasValue)
-                        {
-                            if (start.Value.Start <= end.Value.End) ranges.Add((start.Value.Start, end.Value.End));
-                            else ranges.Add((end.Value.Start, start.Value.End));
-                        }
+                        if (start.Value.Start <= end.Value.End) ranges.Add((start.Value.Start, end.Value.End));
+                        else ranges.Add((end.Value.Start, start.Value.End));
                     }
                 }
             }
-        }
+        });
         return ranges;
     }
 
@@ -1131,9 +1146,23 @@ public class ToolboxApp
             var fileName = rawFileName ?? name;
             var deformattedName = TextFormatter.Deformat(name);
             fileName = TextFormatter.Deformat(fileName);
-            if (fileName.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase)) fileName = fileName.Substring(0, fileName.Length - 8).Trim() + ".Map.Gbx";
-            else if (fileName.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase)) fileName = fileName.Substring(0, fileName.Length - 4).Trim() + ".Gbx";
-            else fileName = fileName.Trim();
+
+            string extension = "";
+            if (fileName.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase))
+            {
+                extension = ".Map.Gbx";
+                fileName = fileName[..^8].Trim();
+            }
+            else if (fileName.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase))
+            {
+                extension = ".Gbx";
+                fileName = fileName[..^4].Trim();
+            }
+            else
+            {
+                fileName = fileName.Trim();
+            }
+            fileName += extension;
 
             foreach (var c in InvalidFileNameChars) fileName = fileName.Replace(c, '_');
 
@@ -1142,7 +1171,7 @@ public class ToolboxApp
             var filePath = Path.Combine(downloadDir, fileName);
             _console.Write($"[{i + 1}/{mapList.Count}] {deformattedName}... ");
 
-            if (_fs.FileExists(filePath) && !config.ForceOverwrite)
+            if (_fs.FileExists(filePath) && !config.App.ForceOverwrite)
             {
                 _console.WriteLine("Skipped (already exists)");
                 processedPaths.Add(filePath);
@@ -1159,7 +1188,7 @@ public class ToolboxApp
                 {
                     var fileNameOnly = Path.GetFileName(filePath);
                     var deformattedFileName = TextFormatter.Deformat(fileNameOnly);
-                    if (config.DryRun) _console.WriteLine($"  [Dry Run] Would update: {deformattedFileName}");
+                    if (config.Fixer.DryRun) _console.WriteLine($"  [Dry Run] Would update: {deformattedFileName}");
                     else _console.WriteLine("Fixed.");
                 }
                 else _console.WriteLine("Saved.");
@@ -1206,29 +1235,40 @@ public class ToolboxApp
         return result.OrderBy(n => n).ToList();
     }
 
+    private void ForEachRange(string input, char[] separators, Action<string, string?> action)
+    {
+        var parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmedPart = part.Trim();
+            var rangeParts = Regex.Split(trimmedPart, @"\s*-\s*");
+            if (rangeParts.Length == 1) action(rangeParts[0], null);
+            else if (rangeParts.Length == 2) action(rangeParts[0], rangeParts[1]);
+        }
+    }
+
     internal List<(MapRef Start, MapRef End)> ParseMapRanges(string input)
     {
         var ranges = new List<(MapRef Start, MapRef End)>();
-        var parts = input.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        ForEachRange(input, new[] { ',', ' ' }, (s, e) =>
         {
-            var rangeParts = part.Split('-');
-            if (rangeParts.Length == 1)
+            var start = ParseMapRef(s);
+            if (start == null) return;
+
+            if (e == null)
             {
-                var mr = ParseMapRef(rangeParts[0]);
-                if (mr != null) ranges.Add((mr, mr));
+                ranges.Add((start, start));
             }
-            else if (rangeParts.Length == 2)
+            else
             {
-                var start = ParseMapRef(rangeParts[0]);
-                var end = ParseMapRef(rangeParts[1]);
-                if (start != null && end != null)
+                var end = ParseMapRef(e);
+                if (end != null)
                 {
                     if (start.CompareTo(end) <= 0) ranges.Add((start, end));
                     else ranges.Add((end, start));
                 }
             }
-        }
+        });
         return ranges;
     }
 
@@ -1247,40 +1287,37 @@ public class ToolboxApp
     internal List<(SeasonalRef Start, SeasonalRef End)> ParseSeasonalRanges(string input)
     {
         var ranges = new List<(SeasonalRef Start, SeasonalRef End)>();
-        var parts = input.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        ForEachRange(input, new[] { ',' }, (s, e) =>
         {
-            var trimmedPart = part.Trim();
-            var rangeParts = Regex.Split(trimmedPart, @"\s*-\s*");
-            if (rangeParts.Length == 1)
-            {
-                var sr = ParseSeasonalRef(rangeParts[0]);
-                if (sr != null)
-                {
-                    if (Regex.IsMatch(rangeParts[0].Trim(), @"^\d{4}$"))
-                    {
-                        ranges.Add((new SeasonalRef(sr.Year, 1), new SeasonalRef(sr.Year, 4)));
-                    }
-                    else
-                    {
-                        ranges.Add((sr, sr));
-                    }
-                }
-            }
-            else if (rangeParts.Length == 2)
-            {
-                var start = ParseSeasonalRef(rangeParts[0]);
-                var end = ParseSeasonalRef(rangeParts[1]);
-                if (start != null && end != null)
-                {
-                    if (Regex.IsMatch(rangeParts[0].Trim(), @"^\d{4}$")) start = new SeasonalRef(start.Year, 1);
-                    if (Regex.IsMatch(rangeParts[1].Trim(), @"^\d{4}$")) end = new SeasonalRef(end.Year, 4);
+            var start = ParseSeasonalRef(s);
+            if (start == null) return;
 
-                    if (start.CompareTo(end) <= 0) ranges.Add((start, end));
-                    else ranges.Add((end, start));
+            if (e == null)
+            {
+                if (Regex.IsMatch(s.Trim(), @"^\d{4}$"))
+                {
+                    ranges.Add((new SeasonalRef(start.Year, 1), new SeasonalRef(start.Year, 4)));
+                }
+                else
+                {
+                    ranges.Add((start, start));
                 }
             }
-        }
+            else
+            {
+                var end = ParseSeasonalRef(e);
+                if (end != null)
+                {
+                    var finalStart = start;
+                    var finalEnd = end;
+                    if (Regex.IsMatch(s.Trim(), @"^\d{4}$")) finalStart = new SeasonalRef(start.Year, 1);
+                    if (Regex.IsMatch(e.Trim(), @"^\d{4}$")) finalEnd = new SeasonalRef(end.Year, 4);
+
+                    if (finalStart.CompareTo(finalEnd) <= 0) ranges.Add((finalStart, finalEnd));
+                    else ranges.Add((finalEnd, finalStart));
+                }
+            }
+        });
         return ranges;
     }
 
@@ -1447,11 +1484,11 @@ public class ToolboxApp
             }
         }
 
-        if (config.ExplicitFolder || (extraFiles == null || extraFiles.Count == 0))
+        if (config.Fixer.ExplicitFolder || (extraFiles == null || extraFiles.Count == 0))
         {
-            if (_fs.DirectoryExists(config.FolderPath))
+            if (_fs.DirectoryExists(config.Fixer.FolderPath))
             {
-                foreach (var file in _fs.GetFiles(config.FolderPath, "*.Map.Gbx", SearchOption.AllDirectories))
+                foreach (var file in _fs.GetFiles(config.Fixer.FolderPath, "*.Map.Gbx", SearchOption.AllDirectories))
                     filesToProcess.Add(file);
             }
         }
@@ -1474,7 +1511,7 @@ public class ToolboxApp
             }
         }
 
-        if (config.UpdateTitle || config.ConvertPlatformMapType)
+        if (config.Fixer.UpdateTitle || config.Fixer.ConvertPlatformMapType)
             _console.WriteLine($"\nBatch analysis complete. Analyzed: {filesToProcess.Count}, Updated: {changed}");
 
         return processedPaths;

@@ -41,7 +41,7 @@ public class ToolboxTests
     {
         var args = new[] { "--weekly-shorts", "68" };
         var config = TrackmaniaCLI.ParseArguments(args);
-        Assert.Equal("68", config.WeeklyShorts);
+        Assert.Equal("68", config.Downloader.WeeklyShorts);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ToolboxTests
     {
         var args = new[] { "--weekly-shorts" };
         var config = TrackmaniaCLI.ParseArguments(args);
-        Assert.Equal("latest", config.WeeklyShorts);
+        Assert.Equal("latest", config.Downloader.WeeklyShorts);
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class ToolboxTests
         _fsMock.Setup(f => f.FileExists("test-map.Map.Gbx")).Returns(true);
         _fsMock.Setup(f => f.DirectoryExists("test-map.Map.Gbx")).Returns(false);
 
-        _app.RunBatchFixer(config, config.ExtraPaths);
+        _app.RunBatchFixer(config, config.App.ExtraPaths);
 
         _fixerMock.Verify(f => f.ProcessFile("test-map.Map.Gbx", config), Times.Once);
     }
@@ -540,6 +540,40 @@ public class ToolboxTests
         // Should not fetch more than 20 pages
         _apiMock.Verify(a => a.GetClubCampaignsAsync(It.IsInRange(0, 19, Moq.Range.Inclusive)), Times.AtLeastOnce);
         _apiMock.Verify(a => a.GetClubCampaignsAsync(It.IsInRange(20, 99, Moq.Range.Inclusive)), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("MapName.Map.Gbx", "MapName.Map.Gbx")]
+    [InlineData("MapName.Gbx", "MapName.Gbx")]
+    [InlineData("MapName", "MapName")]
+    [InlineData("  MapName.Map.Gbx  ", "MapName.Map.Gbx")]
+    [InlineData("MapName.MAP.GBX", "MapName.Map.Gbx")]
+    [InlineData("MapName.GBX", "MapName.Gbx")]
+    public async Task DownloadAndFixMaps_ShouldCorrectlyNormalizeExtensions(string inputName, string expectedFileName)
+    {
+        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
+        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--force" });
+        var maps = new[] { (inputName, (string?)null, "http://url", (string?)null) };
+
+        await _app.DownloadAndFixMaps(maps, "dir", config);
+
+        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.EndsWith(expectedFileName)), It.IsAny<byte[]>()), Times.Once);
+    }
+
+    [Fact]
+    public void ParseMapRanges_ShouldUseUnifiedHelper()
+    {
+        var result = _app.ParseMapRanges("1-3, 5, 10-12");
+        Assert.Equal(3, result.Count);
+        Assert.Equal(1, result[0].Start.Campaign);
+        Assert.Equal(3, result[0].End.Campaign);
+        Assert.Equal(5, result[1].Start.Campaign);
+        Assert.Equal(5, result[1].End.Campaign);
+        Assert.Equal(10, result[2].Start.Campaign);
+        Assert.Equal(12, result[2].End.Campaign);
     }
 }
 
