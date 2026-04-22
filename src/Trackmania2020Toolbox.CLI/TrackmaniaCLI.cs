@@ -33,7 +33,7 @@ public class RealConsole : IConsole
 
 public static class TrackmaniaCLI
 {
-    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (contact: trackmania-downloader-script@example.com)";
+    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (+https://github.com/AI-Citizen/Trackmania2020Toolbox)";
     public static readonly HttpClient HttpClient = new HttpClient();
 
     public static string GetScriptDirectory() => AppDomain.CurrentDomain.BaseDirectory;
@@ -184,11 +184,10 @@ public static class TrackmaniaCLI
         }
 
         return new Config(
-            weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate,
-            tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom,
-            exportMedalsPlayerId, exportMedalsCampaign,
-            folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun, force, interactive,
-            play, setGamePath, extraPaths
+            new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
+            new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
+            new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
+            new AppConfig(force, interactive, play, setGamePath, extraPaths)
         );
     }
 
