@@ -331,7 +331,8 @@ public class ToolboxTests
 
         _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ReturnsAsync(leaderboardMock.Object);
 
-        await _app.HandleExportCampaignMedals(playerId, "Seasonal");
+        var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>());
+        await _app.HandleExportCampaignMedals(playerId, "Seasonal", config);
 
         _fsMock.Verify(f => f.WriteAllLines("medals.csv", It.Is<IEnumerable<string>>(lines =>
             lines.Any(l => l.Contains("Medal: 3") || l.Contains(", 3,")) // Medal 3 is Gold
@@ -431,9 +432,10 @@ public class ToolboxTests
         // API throws exception (e.g. 500)
         _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ThrowsAsync(new HttpRequestException("API Error"));
 
-        await _app.HandleExportCampaignMedals(playerId, "Seasonal");
+        var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>());
+        await _app.HandleExportCampaignMedals(playerId, "Seasonal", config);
 
-        _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Error or no record"))), Times.Once);
+        _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Network error"))), Times.Once);
         _fsMock.Verify(f => f.WriteAllLines("medals.csv", It.IsAny<IEnumerable<string>>()), Times.Once);
     }
 

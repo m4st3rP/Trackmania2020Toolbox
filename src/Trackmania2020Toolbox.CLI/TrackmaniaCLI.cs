@@ -22,18 +22,30 @@ public class RealConsole : IConsole
         {
             WriteLine($"{i + 1}: {itemList[i]}");
         }
-        Write("\nSelect a number (or 0 to cancel): ");
-        if (int.TryParse(ReadLine(), out var choice) && choice > 0 && choice <= itemList.Count)
+
+        while (true)
         {
-            return Task.FromResult(choice);
+            Write("\nSelect a number (or 0 to cancel): ");
+            var input = ReadLine();
+            if (int.TryParse(input, out var choice))
+            {
+                if (choice >= 0 && choice <= itemList.Count)
+                {
+                    return Task.FromResult(choice);
+                }
+                WriteLine($"Invalid choice: {choice}. Please select a number between 0 and {itemList.Count}.");
+            }
+            else
+            {
+                WriteLine($"Invalid input: '{input}'. Please enter a number.");
+            }
         }
-        return Task.FromResult(0);
     }
 }
 
 public static class TrackmaniaCLI
 {
-    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (+https://github.com/m4st3rP/Trackmania2020Toolbox)";
+    public static readonly string UserAgent = "Trackmania2020Toolbox/1.0 (+https://github.com/AI-Citizen/Trackmania2020Toolbox)";
     public static readonly HttpClient HttpClient = new HttpClient();
 
     public static string GetScriptDirectory() => AppDomain.CurrentDomain.BaseDirectory;
