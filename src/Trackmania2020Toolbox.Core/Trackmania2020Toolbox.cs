@@ -86,7 +86,7 @@ public interface IConsole
 
 public record DownloaderConfig(
     string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
-    string? ExportMedalsPlayerId, string? ExportMedalsCampaign
+    string? ExportMedalsPlayerId, string? ExportMedalsCampaign, int DownloadDelayMs = 1000
 );
 
 public record TmxConfig(
@@ -308,6 +308,8 @@ public class RealNetworkService : INetworkService
 
 public class RealMapFixer : IMapFixer
 {
+    private const string LegacyTitleId = "OrbitalDev@falguiere";
+
     public bool ProcessFile(string filePath, Config cfg)
     {
         var fixerCfg = cfg.Fixer;
@@ -317,7 +319,7 @@ public class RealMapFixer : IMapFixer
         var map = gbx.Node;
         bool changed = false;
 
-        if (fixerCfg.UpdateTitle && map.TitleId == "OrbitalDev@falguiere")
+        if (fixerCfg.UpdateTitle && map.TitleId == LegacyTitleId)
         {
             map.TitleId = "TMStadium";
             changed = true;
@@ -448,7 +450,7 @@ public class ToolboxApp
 
         if (dlCfg.ExportMedalsPlayerId != null)
         {
-            await HandleExportCampaignMedals(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign);
+            await HandleExportCampaignMedals(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign, config);
             downloadActionTaken = true;
         }
 
@@ -1194,7 +1196,7 @@ public class ToolboxApp
                 else _console.WriteLine("Saved.");
 
                 processedPaths.Add(filePath);
-                await Task.Delay(1000);
+                await Task.Delay(config.Downloader.DownloadDelayMs);
             }
             catch (Exception ex)
             {
@@ -1370,7 +1372,7 @@ public class ToolboxApp
         _ => 0
     };
 
-    public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter)
+    public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter, Config config)
     {
         if (!Guid.TryParse(playerId, out var accountId))
         {
@@ -1405,7 +1407,7 @@ public class ToolboxApp
             var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
             _console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
 
-            await Task.Delay(1000);
+            await Task.Delay(config.Downloader.DownloadDelayMs);
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null)
             {
@@ -1415,7 +1417,7 @@ public class ToolboxApp
 
             foreach (var map in fullCampaign.Playlist)
             {
-                await Task.Delay(1000);
+                await Task.Delay(config.Downloader.DownloadDelayMs);
                 var deformattedMapName = TextFormatter.Deformat(map.Name);
                 _console.Write($"  - {deformattedMapName}... ");
 
@@ -1443,9 +1445,20 @@ public class ToolboxApp
                         _console.WriteLine("No record.");
                     }
                 }
-                catch
+                catch (HttpRequestException ex)
                 {
-                    _console.WriteLine("Error or no record.");
+                    if (ex.StatusCode == System.Net.HttpStatusCode.InternalServerError || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        _console.WriteLine("No record found (API returned 404/500).");
+                    }
+                    else
+                    {
+                        _console.WriteLine($"Network error: {ex.StatusCode}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _console.WriteLine($"Error: {ex.Message}");
                 }
 
                 csvLines.Add($"\"{deformattedCampaignName}\", \"{deformattedMapName}\", {medal}, {formattedTime}");
