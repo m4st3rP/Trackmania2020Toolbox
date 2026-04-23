@@ -195,11 +195,13 @@ public static class TrackmaniaCLI
             }
         }
 
+        var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
         return new Config(
             new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
             new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
             new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
-            new AppConfig(force, interactive, play, setGamePath, extraPaths)
+            new AppConfig(force, interactive, play, setGamePath, extraPaths),
+            new DesktopConfig(defaultMapsFolder, true, true)
         );
     }
 
