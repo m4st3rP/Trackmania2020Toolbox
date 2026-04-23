@@ -16,6 +16,7 @@
     <PackageReference Include="ManiaAPI.TMX.Extensions.Gbx" Version="2.7.0" />
     <PackageReference Include="ManiaAPI.TrackmaniaIO" Version="2.*" />
     <PackageReference Include="TmEssentials" Version="2.*" />
+    <PackageReference Include="Tomlyn" Version="2.3.2" />
   </ItemGroup>
 
 </Project>

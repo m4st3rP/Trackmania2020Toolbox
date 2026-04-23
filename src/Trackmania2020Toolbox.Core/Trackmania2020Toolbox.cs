@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Tomlyn;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -62,6 +63,7 @@ public interface IFileSystem
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
+    string[] GetDirectories(string path);
 }
 
 public interface INetworkService
@@ -84,6 +86,134 @@ public interface IConsole
     Task<int> SelectItemAsync(string title, IEnumerable<string> items);
 }
 
+public record BrowserItem(string DisplayName, string FullPath, bool IsDirectory)
+{
+    public string Icon => IsDirectory ? "📁" : "📄";
+}
+
+public interface IBrowserService
+{
+    IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending);
+}
+
+public interface IConfigService
+{
+    Config LoadConfig(string scriptDirectory);
+    void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay);
+}
+
+public class RealConfigService : IConfigService
+{
+    private readonly IFileSystem _fs;
+
+    public RealConfigService(IFileSystem fs)
+    {
+        _fs = fs;
+    }
+
+    public Config LoadConfig(string scriptDirectory)
+    {
+        var configPath = Path.Combine(scriptDirectory, "config.toml");
+        string? gamePath = null;
+        string? browserFolder = null;
+        bool doubleClickToPlay = true;
+        bool enterToPlay = true;
+
+        if (_fs.FileExists(configPath))
+        {
+            try
+            {
+                var content = string.Join("\n", _fs.ReadAllLines(configPath));
+                var model = TomlSerializer.Deserialize<Tomlyn.Model.TomlTable>(content);
+
+                if (model.ContainsKey("game_path")) gamePath = model["game_path"]?.ToString();
+                if (model.ContainsKey("browser_folder")) browserFolder = model["browser_folder"]?.ToString();
+                if (model.ContainsKey("double_click_to_play")) doubleClickToPlay = bool.Parse(model["double_click_to_play"]?.ToString() ?? "true");
+                if (model.ContainsKey("enter_to_play")) enterToPlay = bool.Parse(model["enter_to_play"]?.ToString() ?? "true");
+            }
+            catch
+            {
+                // Fallback to defaults on error
+            }
+        }
+
+        var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+
+        return new Config(
+            new DownloaderConfig(null, null, null, null, null, null, null),
+            new TmxConfig(null, null, null, null, "name", false, false),
+            new FixerConfig(browserFolder ?? defaultMapsFolder, false, true, true, false),
+            new AppConfig(false, true, false, gamePath, new List<string>()),
+            new DesktopConfig(browserFolder ?? defaultMapsFolder, doubleClickToPlay, enterToPlay)
+        );
+    }
+
+    public void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay)
+    {
+        var configPath = Path.Combine(scriptDirectory, "config.toml");
+        var model = new Tomlyn.Model.TomlTable
+        {
+            ["game_path"] = gamePath ?? "",
+            ["browser_folder"] = browserFolder ?? "",
+            ["double_click_to_play"] = doubleClickToPlay,
+            ["enter_to_play"] = enterToPlay
+        };
+
+        var content = TomlSerializer.Serialize(model);
+        _fs.WriteAllText(configPath, content);
+    }
+}
+
+public class RealBrowserService : IBrowserService
+{
+    private readonly IFileSystem _fs;
+
+    public RealBrowserService(IFileSystem fs)
+    {
+        _fs = fs;
+    }
+
+    public IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending)
+    {
+        if (!_fs.DirectoryExists(directory)) return Enumerable.Empty<BrowserItem>();
+
+        var items = new List<BrowserItem>();
+
+        var dirs = _fs.GetDirectories(directory)
+            .Select(d => new { Path = d, Name = Path.GetFileName(d) });
+
+        var sortedDirs = descending ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
+
+        foreach (var dir in sortedDirs)
+        {
+            if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+
+            items.Add(new BrowserItem(dir.Name, dir.Path, true));
+        }
+
+        var files = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
+            .Select(f =>
+            {
+                var fn = Path.GetFileName(f);
+                return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
+            });
+
+        var filteredFiles = files.Where(f =>
+            string.IsNullOrEmpty(filter) ||
+            f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+            f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+        var sortedFiles = descending ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
+
+        foreach (var file in sortedFiles)
+        {
+            items.Add(new BrowserItem(file.DisplayName, file.Path, false));
+        }
+
+        return items;
+    }
+}
+
 public record DownloaderConfig(
     string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
     string? ExportMedalsPlayerId, string? ExportMedalsCampaign, int DownloadDelayMs = 1000
@@ -101,11 +231,16 @@ public record AppConfig(
     bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
 );
 
+public record DesktopConfig(
+    string BrowserFolder, bool DoubleClickToPlay, bool EnterToPlay
+);
+
 public record Config(
     DownloaderConfig Downloader,
     TmxConfig Tmx,
     FixerConfig Fixer,
-    AppConfig App
+    AppConfig App,
+    DesktopConfig Desktop
 );
 
 public class TrackmaniaApiWrapper : ITrackmaniaApi
@@ -297,6 +432,7 @@ public class RealFileSystem : IFileSystem
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
+    public string[] GetDirectories(string path) => Directory.GetDirectories(path);
 }
 
 public class RealNetworkService : INetworkService
@@ -360,10 +496,11 @@ public class ToolboxApp
     private readonly IMapFixer _fixer;
     private readonly IConsole _console;
     private readonly IDateTime _dateTime;
+    private readonly IConfigService _configService;
     public readonly string _scriptDirectory;
     public readonly string _defaultMapsFolder;
 
-    public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory)
+    public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
     {
         _api = api;
         _fs = fs;
@@ -372,6 +509,7 @@ public class ToolboxApp
         _console = console;
         _dateTime = dateTime;
         _scriptDirectory = scriptDirectory;
+        _configService = configService ?? new RealConfigService(fs);
         _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
     }
 
@@ -471,11 +609,11 @@ public class ToolboxApp
 
     private void SaveGamePath(string path)
     {
-        var configPath = Path.Combine(_scriptDirectory, "config.toml");
         try
         {
-            _fs.WriteAllText(configPath, $"game_path = \"{path}\"\n");
-            _console.WriteLine($"Game path saved to: {configPath}");
+            var config = _configService.LoadConfig(_scriptDirectory);
+            _configService.SaveConfig(_scriptDirectory, path, config.Desktop.BrowserFolder, config.Desktop.DoubleClickToPlay, config.Desktop.EnterToPlay);
+            _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)
         {
@@ -485,22 +623,8 @@ public class ToolboxApp
 
     private string? GetGamePath()
     {
-        var configPath = Path.Combine(_scriptDirectory, "config.toml");
-        if (!_fs.FileExists(configPath)) return null;
-
-        var lines = _fs.ReadAllLines(configPath);
-        foreach (var line in lines)
-        {
-            if (line.Trim().StartsWith("game_path", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split('=', 2);
-                if (parts.Length == 2)
-                {
-                    return parts[1].Trim().Trim('"');
-                }
-            }
-        }
-        return null;
+        var config = _configService.LoadConfig(_scriptDirectory);
+        return config.App.SetGamePath;
     }
 
     private void LaunchGame(List<string> mapPaths)

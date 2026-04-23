@@ -17,17 +17,12 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox.Desktop;
 
-public class BrowserItem
-{
-    public string DisplayName { get; set; } = string.Empty;
-    public string FullPath { get; set; } = string.Empty;
-    public bool IsDirectory { get; set; }
-    public string Icon => IsDirectory ? "📁" : "📄";
-}
 
 public partial class MainWindow : Window
 {
     private readonly ToolboxApp _app;
+    private readonly IBrowserService _browserService;
+    private readonly IConfigService _configService;
     private readonly TextBox _logOutput;
     private readonly TextBox _weeklyShortsInput;
     private readonly TextBox _weeklyGrandsInput;
@@ -109,12 +104,14 @@ public partial class MainWindow : Window
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         var dateTime = new RealDateTime();
+        _browserService = new RealBrowserService(fs);
+        _configService = new RealConfigService(fs);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
             TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Add("User-Agent", TrackmaniaCLI.UserAgent);
 
-        _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory());
+        _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory(), _configService);
 
         // Load initial settings
         _fixerFolderInput.Text = _app._defaultMapsFolder;
@@ -256,6 +253,11 @@ public partial class MainWindow : Window
                 _playAfterDownloadCheck.IsChecked ?? false,
                 null,
                 new List<string>()
+            ),
+            new DesktopConfig(
+                _browserFolderInput.Text ?? _app._defaultMapsFolder,
+                _doubleClickToPlayCheck.IsChecked ?? true,
+                _enterToPlayCheck.IsChecked ?? true
             )
         );
     }
@@ -320,45 +322,25 @@ public partial class MainWindow : Window
 
     private void LoadConfig()
     {
-        var configPath = Path.Combine(_app._scriptDirectory, "config.toml");
-        if (!File.Exists(configPath)) return;
-        var lines = File.ReadAllLines(configPath);
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith('#') || !trimmed.Contains('=')) continue;
-
-            var parts = trimmed.Split('=', 2);
-            var key = parts[0].Trim().ToLowerInvariant();
-            var value = parts[1].Trim().Trim('"');
-
-            switch (key)
-            {
-                case "game_path": _gamePathInput.Text = value; break;
-                case "browser_folder": _browserFolderInput.Text = value; break;
-                case "double_click_to_play": _doubleClickToPlayCheck.IsChecked = bool.Parse(value); break;
-                case "enter_to_play": _enterToPlayCheck.IsChecked = bool.Parse(value); break;
-            }
-        }
+        var config = _configService.LoadConfig(_app._scriptDirectory);
+        _gamePathInput.Text = config.App.SetGamePath;
+        _browserFolderInput.Text = config.Desktop.BrowserFolder;
+        _doubleClickToPlayCheck.IsChecked = config.Desktop.DoubleClickToPlay;
+        _enterToPlayCheck.IsChecked = config.Desktop.EnterToPlay;
     }
 
     private void SaveConfig()
     {
-        var configPath = Path.Combine(_app._scriptDirectory, "config.toml");
         try
         {
-            var lines = new List<string>
-            {
-                $"game_path = \"{_gamePathInput.Text}\"",
-                $"browser_folder = \"{_browserFolderInput.Text}\"",
-                $"double_click_to_play = {(_doubleClickToPlayCheck.IsChecked ?? false).ToString().ToLower()}",
-                $"enter_to_play = {(_enterToPlayCheck.IsChecked ?? false).ToString().ToLower()}"
-            };
-            File.WriteAllLines(configPath, lines);
-            AppendLog($"Settings saved to: {configPath}{Environment.NewLine}");
+            _configService.SaveConfig(
+                _app._scriptDirectory,
+                _gamePathInput.Text,
+                _browserFolderInput.Text,
+                _doubleClickToPlayCheck.IsChecked ?? true,
+                _enterToPlayCheck.IsChecked ?? true);
 
-            // If browser folder changed and we are in the root of old browser folder, update it
-            // For simplicity, let's just refresh if we are currently at or under the browser folder
+            AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
             RefreshBrowser();
         }
         catch (Exception ex)
@@ -387,46 +369,10 @@ public partial class MainWindow : Window
         try
         {
             bool desc = _browserSortCombo.SelectedIndex == 1;
-
-            var dirs = Directory.GetDirectories(_currentBrowserDirectory)
-                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
-
-            var sortedDirs = desc ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
-
-            foreach (var dir in sortedDirs)
+            var items = _browserService.GetBrowserItems(_currentBrowserDirectory, filter, desc);
+            foreach (var item in items)
             {
-                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-
-                _browserItems.Add(new BrowserItem
-                {
-                    DisplayName = dir.Name,
-                    FullPath = dir.Path,
-                    IsDirectory = true
-                });
-            }
-
-            var files = Directory.GetFiles(_currentBrowserDirectory, "*.Map.Gbx")
-                .Select(f =>
-                {
-                    var fn = Path.GetFileName(f);
-                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
-                });
-
-            var filteredFiles = files.Where(f =>
-                string.IsNullOrEmpty(filter) ||
-                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
-            var sortedFiles = desc ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
-
-            foreach (var file in sortedFiles)
-            {
-                _browserItems.Add(new BrowserItem
-                {
-                    DisplayName = file.DisplayName,
-                    FullPath = file.Path,
-                    IsDirectory = false
-                });
+                _browserItems.Add(item);
             }
         }
         catch (Exception ex)
