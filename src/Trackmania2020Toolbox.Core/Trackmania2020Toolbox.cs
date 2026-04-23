@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Tomlyn;
+using Tomlyn.Model;
+using Tomlyn.Serialization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -102,6 +104,9 @@ public interface IConfigService
     void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload);
 }
 
+[TomlSerializable(typeof(TomlTable))]
+internal partial class ToolboxConfigContext : TomlSerializerContext { }
+
 public class RealConfigService : IConfigService
 {
     private readonly IFileSystem _fs;
@@ -125,7 +130,7 @@ public class RealConfigService : IConfigService
             try
             {
                 var content = string.Join("\n", _fs.ReadAllLines(configPath));
-                var model = TomlSerializer.Deserialize<Tomlyn.Model.TomlTable>(content);
+                var model = TomlSerializer.Deserialize<TomlTable>(content, ToolboxConfigContext.Default.TomlTable);
 
                 if (model != null)
                 {
@@ -156,7 +161,7 @@ public class RealConfigService : IConfigService
     public void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
-        var model = new Tomlyn.Model.TomlTable
+        var model = new TomlTable
         {
             ["game_path"] = gamePath ?? "",
             ["browser_folder"] = browserFolder ?? "",
@@ -165,7 +170,7 @@ public class RealConfigService : IConfigService
             ["play_after_download"] = playAfterDownload
         };
 
-        var content = TomlSerializer.Serialize(model);
+        var content = TomlSerializer.Serialize(model, ToolboxConfigContext.Default.TomlTable);
         _fs.WriteAllText(configPath, content);
     }
 }
