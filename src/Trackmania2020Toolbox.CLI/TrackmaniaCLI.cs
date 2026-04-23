@@ -62,10 +62,12 @@ public static class TrackmaniaCLI
             return;
         }
 
-        var config = ParseArguments(args);
+        var fs = new RealFileSystem();
+        var configService = new RealConfigService(GetScriptDirectory(), fs);
+        var config = await configService.LoadConfigAsync();
+        config = ParseArguments(args, config);
 
         using var api = new TrackmaniaApiWrapper(HttpClient, UserAgent);
-        var fs = new RealFileSystem();
         var net = new RealNetworkService(HttpClient);
         var fixer = new RealMapFixer();
         var console = new RealConsole();
@@ -73,9 +75,14 @@ public static class TrackmaniaCLI
 
         var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, GetScriptDirectory());
         await app.RunAsync(config);
+
+        if (config.App.SetGamePath != null)
+        {
+            await configService.SaveConfigAsync(config with { Desktop = config.Desktop with { GamePath = config.App.SetGamePath } });
+        }
     }
 
-    public static Config ParseArguments(string[] args)
+    public static Config ParseArguments(string[] args, Config config)
     {
         string? weeklyShorts = null;
         string? weeklyGrands = null;
@@ -88,18 +95,17 @@ public static class TrackmaniaCLI
         string? tmxPacks = null;
         string? tmxSearch = null;
         string? tmxAuthor = null;
-        string tmxSort = "name";
-        bool tmxDesc = false;
-        bool tmxRandom = false;
-        string defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
-        string folder = defaultFolder;
-        bool explicitFolder = false;
-        bool skipTitleUpdate = false;
-        bool skipMapTypeConvert = false;
-        bool dryRun = false;
-        bool force = false;
-        bool interactive = true;
-        bool play = false;
+        string tmxSort = config.Tmx.TmxSort;
+        bool tmxDesc = config.Tmx.TmxDesc;
+        bool tmxRandom = config.Tmx.TmxRandom;
+        string folder = config.Fixer.FolderPath;
+        bool explicitFolder = config.Fixer.ExplicitFolder;
+        bool skipTitleUpdate = !config.Fixer.UpdateTitle;
+        bool skipMapTypeConvert = !config.Fixer.ConvertPlatformMapType;
+        bool dryRun = config.Fixer.DryRun;
+        bool force = config.App.ForceOverwrite;
+        bool interactive = config.App.Interactive;
+        bool play = config.App.Play;
         string? setGamePath = null;
         var extraPaths = new List<string>();
 
@@ -195,12 +201,45 @@ public static class TrackmaniaCLI
             }
         }
 
-        return new Config(
-            new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
-            new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
-            new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
-            new AppConfig(force, interactive, play, setGamePath, extraPaths)
-        );
+        return config with
+        {
+            Downloader = config.Downloader with
+            {
+                WeeklyShorts = weeklyShorts,
+                WeeklyGrands = weeklyGrands,
+                Seasonal = seasonal,
+                ClubCampaign = clubCampaign,
+                ToTDDate = totdDate,
+                ExportMedalsPlayerId = exportMedalsPlayerId,
+                ExportMedalsCampaign = exportMedalsCampaign
+            },
+            Tmx = config.Tmx with
+            {
+                TmxMaps = tmxMaps,
+                TmxPacks = tmxPacks,
+                TmxSearch = tmxSearch,
+                TmxAuthor = tmxAuthor,
+                TmxSort = tmxSort,
+                TmxDesc = tmxDesc,
+                TmxRandom = tmxRandom
+            },
+            Fixer = config.Fixer with
+            {
+                FolderPath = folder,
+                ExplicitFolder = explicitFolder,
+                UpdateTitle = !skipTitleUpdate,
+                ConvertPlatformMapType = !skipMapTypeConvert,
+                DryRun = dryRun
+            },
+            App = config.App with
+            {
+                ForceOverwrite = force,
+                Interactive = interactive,
+                Play = play,
+                SetGamePath = setGamePath,
+                ExtraPaths = extraPaths
+            }
+        };
     }
 
     public static void PrintUsage()

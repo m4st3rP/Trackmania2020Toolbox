@@ -17,17 +17,11 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox.Desktop;
 
-public class BrowserItem
-{
-    public string DisplayName { get; set; } = string.Empty;
-    public string FullPath { get; set; } = string.Empty;
-    public bool IsDirectory { get; set; }
-    public string Icon => IsDirectory ? "📁" : "📄";
-}
-
 public partial class MainWindow : Window
 {
     private readonly ToolboxApp _app;
+    private readonly IConfigService _configService;
+    private readonly IBrowserService _browserService;
     private readonly TextBox _logOutput;
     private readonly TextBox _weeklyShortsInput;
     private readonly TextBox _weeklyGrandsInput;
@@ -64,6 +58,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BrowserItem> _browserItems = new();
     private string _currentBrowserDirectory = string.Empty;
     private FileSystemWatcher? _watcher;
+    private Config _config = Config.Default;
 
     public MainWindow()
     {
@@ -109,6 +104,8 @@ public partial class MainWindow : Window
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         var dateTime = new RealDateTime();
+        _configService = new RealConfigService(TrackmaniaCLI.GetScriptDirectory(), fs);
+        _browserService = new RealBrowserService(fs);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
@@ -117,11 +114,7 @@ public partial class MainWindow : Window
         _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory());
 
         // Load initial settings
-        _fixerFolderInput.Text = _app._defaultMapsFolder;
-        _browserFolderInput.Text = _app._defaultMapsFolder;
-        LoadConfig();
-        _currentBrowserDirectory = _browserFolderInput.Text;
-        RefreshBrowser();
+        _ = InitializeAsync();
 
         // Wire up buttons
         this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShorts(_weeklyShortsInput.Text ?? "latest", GetConfig()));
@@ -240,24 +233,23 @@ public partial class MainWindow : Window
 
     private Config GetConfig()
     {
-        return new Config(
-            new DownloaderConfig(null, null, null, null, null, null, null),
-            new TmxConfig(null, null, null, null, "name", false, false),
-            new FixerConfig(
-                _fixerFolderInput.Text ?? _app._defaultMapsFolder,
-                true, // Use explicit folder
-                _updateTitleCheck.IsChecked ?? true,
-                _convertMapTypeCheck.IsChecked ?? true,
-                _dryRunCheck.IsChecked ?? false
-            ),
-            new AppConfig(
-                _forceOverwriteCheck.IsChecked ?? false,
-                true, // interactive
-                _playAfterDownloadCheck.IsChecked ?? false,
-                null,
-                new List<string>()
-            )
-        );
+        return _config with
+        {
+            Fixer = _config.Fixer with
+            {
+                FolderPath = _fixerFolderInput.Text ?? _app._defaultMapsFolder,
+                ExplicitFolder = true,
+                UpdateTitle = _updateTitleCheck.IsChecked ?? true,
+                ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true,
+                DryRun = _dryRunCheck.IsChecked ?? false
+            },
+            App = _config.App with
+            {
+                ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false,
+                Interactive = true,
+                Play = _playAfterDownloadCheck.IsChecked ?? false
+            }
+        };
     }
 
     private async Task RunTask(Func<Task> task)
@@ -279,7 +271,6 @@ public partial class MainWindow : Window
             var paths = await task();
             if (paths.Count > 0)
             {
-                RefreshBrowser();
                 if (_playAfterDownloadCheck.IsChecked ?? false)
                 {
                     LaunchGame(paths);
@@ -318,53 +309,35 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadConfig()
+    private async Task InitializeAsync()
     {
-        var configPath = Path.Combine(_app._scriptDirectory, "config.toml");
-        if (!File.Exists(configPath)) return;
-        var lines = File.ReadAllLines(configPath);
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith('#') || !trimmed.Contains('=')) continue;
-
-            var parts = trimmed.Split('=', 2);
-            var key = parts[0].Trim().ToLowerInvariant();
-            var value = parts[1].Trim().Trim('"');
-
-            switch (key)
-            {
-                case "game_path": _gamePathInput.Text = value; break;
-                case "browser_folder": _browserFolderInput.Text = value; break;
-                case "double_click_to_play": _doubleClickToPlayCheck.IsChecked = bool.Parse(value); break;
-                case "enter_to_play": _enterToPlayCheck.IsChecked = bool.Parse(value); break;
-            }
-        }
+        _config = await _configService.LoadConfigAsync();
+        _fixerFolderInput.Text = _config.Fixer.FolderPath;
+        _browserFolderInput.Text = _config.Desktop.BrowserFolder;
+        _gamePathInput.Text = _config.Desktop.GamePath;
+        _doubleClickToPlayCheck.IsChecked = _config.Desktop.DoubleClickToPlay;
+        _enterToPlayCheck.IsChecked = _config.Desktop.EnterToPlay;
+        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
+        RefreshBrowser();
     }
 
-    private void SaveConfig()
+    private async void SaveConfig()
     {
-        var configPath = Path.Combine(_app._scriptDirectory, "config.toml");
-        try
+        _config = _config with
         {
-            var lines = new List<string>
+            Fixer = _config.Fixer with { FolderPath = _fixerFolderInput.Text ?? "" },
+            Desktop = _config.Desktop with
             {
-                $"game_path = \"{_gamePathInput.Text}\"",
-                $"browser_folder = \"{_browserFolderInput.Text}\"",
-                $"double_click_to_play = {(_doubleClickToPlayCheck.IsChecked ?? false).ToString().ToLower()}",
-                $"enter_to_play = {(_enterToPlayCheck.IsChecked ?? false).ToString().ToLower()}"
-            };
-            File.WriteAllLines(configPath, lines);
-            AppendLog($"Settings saved to: {configPath}{Environment.NewLine}");
+                GamePath = _gamePathInput.Text ?? "",
+                BrowserFolder = _browserFolderInput.Text ?? "",
+                DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true,
+                EnterToPlay = _enterToPlayCheck.IsChecked ?? true
+            }
+        };
 
-            // If browser folder changed and we are in the root of old browser folder, update it
-            // For simplicity, let's just refresh if we are currently at or under the browser folder
-            RefreshBrowser();
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"Error saving config: {ex.Message}{Environment.NewLine}");
-        }
+        await _configService.SaveConfigAsync(_config);
+        AppendLog("Settings saved." + Environment.NewLine);
+        RefreshBrowser();
     }
 
     private void RefreshBrowser()
@@ -383,55 +356,12 @@ public partial class MainWindow : Window
         _browserItems.Clear();
 
         var filter = _browserSearchInput.Text ?? "";
+        bool descending = _browserSortCombo.SelectedIndex == 1;
 
-        try
+        var items = _browserService.GetItems(_currentBrowserDirectory, filter, descending);
+        foreach (var item in items)
         {
-            bool desc = _browserSortCombo.SelectedIndex == 1;
-
-            var dirs = Directory.GetDirectories(_currentBrowserDirectory)
-                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
-
-            var sortedDirs = desc ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
-
-            foreach (var dir in sortedDirs)
-            {
-                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-
-                _browserItems.Add(new BrowserItem
-                {
-                    DisplayName = dir.Name,
-                    FullPath = dir.Path,
-                    IsDirectory = true
-                });
-            }
-
-            var files = Directory.GetFiles(_currentBrowserDirectory, "*.Map.Gbx")
-                .Select(f =>
-                {
-                    var fn = Path.GetFileName(f);
-                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
-                });
-
-            var filteredFiles = files.Where(f =>
-                string.IsNullOrEmpty(filter) ||
-                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
-            var sortedFiles = desc ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
-
-            foreach (var file in sortedFiles)
-            {
-                _browserItems.Add(new BrowserItem
-                {
-                    DisplayName = file.DisplayName,
-                    FullPath = file.Path,
-                    IsDirectory = false
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"Error refreshing browser: {ex.Message}{Environment.NewLine}");
+            _browserItems.Add(item);
         }
 
         SetupWatcher();

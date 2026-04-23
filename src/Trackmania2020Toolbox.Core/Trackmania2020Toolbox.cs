@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using Tomlyn;
 using GBX.NET;
 using GBX.NET.Engines.Game;
 using GBX.NET.LZO;
@@ -27,6 +28,14 @@ public interface ITrackmaniaMap { string Name { get; } string? FileName { get; }
 public interface ITrackOfTheDayCollection { int Year { get; } int Month { get; } IEnumerable<ITrackOfTheDayDay> Days { get; } }
 public interface ILeaderboard { IEnumerable<IRecord> Tops { get; } }
 public interface IRecord { TimeInt32 Time { get; } }
+
+public class BrowserItem
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public bool IsDirectory { get; set; }
+    public string Icon => IsDirectory ? "📁" : "📄";
+}
 
 public interface ITmxMap { int Id { get; } string Name { get; } string AuthorName { get; } int AwardCount { get; } int DownloadCount { get; } }
 public interface ITmxMapPack { int Id { get; } string Name { get; } }
@@ -59,9 +68,11 @@ public interface IFileSystem
     bool FileExists(string path);
     Task WriteAllBytesAsync(string path, byte[] bytes);
     void WriteAllText(string path, string contents);
+    string ReadAllText(string path);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
+    string[] GetDirectories(string path);
 }
 
 public interface INetworkService
@@ -75,6 +86,17 @@ public interface IMapFixer
 }
 
 public interface IDateTime { DateTime UtcNow { get; } }
+
+public interface IConfigService
+{
+    Task<Config> LoadConfigAsync();
+    Task SaveConfigAsync(Config config);
+}
+
+public interface IBrowserService
+{
+    IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false);
+}
 
 public interface IConsole
 {
@@ -101,12 +123,33 @@ public record AppConfig(
     bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
 );
 
+public record DesktopConfig(
+    string GamePath = "", string BrowserFolder = "", bool DoubleClickToPlay = true, bool EnterToPlay = true
+);
+
 public record Config(
     DownloaderConfig Downloader,
     TmxConfig Tmx,
     FixerConfig Fixer,
-    AppConfig App
-);
+    AppConfig App,
+    DesktopConfig Desktop
+)
+{
+    public static Config Default
+    {
+        get
+        {
+            var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+            return new Config(
+                new DownloaderConfig(null, null, null, null, null, null, null),
+                new TmxConfig(null, null, null, null, "name", false, false),
+                new FixerConfig(defaultMapsFolder, false, true, true, false),
+                new AppConfig(false, true, false, null, new List<string>()),
+                new DesktopConfig(BrowserFolder: defaultMapsFolder)
+            );
+        }
+    }
+}
 
 public class TrackmaniaApiWrapper : ITrackmaniaApi
 {
@@ -294,9 +337,11 @@ public class RealFileSystem : IFileSystem
     public bool FileExists(string path) => File.Exists(path);
     public Task WriteAllBytesAsync(string path, byte[] bytes) => File.WriteAllBytesAsync(path, bytes);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
+    public string ReadAllText(string path) => File.ReadAllText(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
+    public string[] GetDirectories(string path) => Directory.GetDirectories(path);
 }
 
 public class RealNetworkService : INetworkService
@@ -345,6 +390,107 @@ public class RealMapFixer : IMapFixer
 
 public class RealDateTime : IDateTime { public DateTime UtcNow => DateTime.UtcNow; }
 
+public class RealConfigService : IConfigService
+{
+    private readonly string _path;
+    private readonly IFileSystem _fs;
+
+    public RealConfigService(string scriptDirectory, IFileSystem fs)
+    {
+        _path = Path.Combine(scriptDirectory, "config.toml");
+        _fs = fs;
+    }
+
+    public async Task<Config> LoadConfigAsync()
+    {
+        if (!_fs.FileExists(_path)) return Config.Default;
+
+        try
+        {
+            var content = _fs.ReadAllText(_path);
+            return TomlSerializer.Deserialize<Config>(content) ?? Config.Default;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load config: {ex.Message}");
+            return Config.Default;
+        }
+    }
+
+    public Task SaveConfigAsync(Config config)
+    {
+        try
+        {
+            var content = TomlSerializer.Serialize(config);
+            _fs.WriteAllText(_path, content);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save config: {ex.Message}");
+        }
+        return Task.CompletedTask;
+    }
+}
+
+public class RealBrowserService : IBrowserService
+{
+    private readonly IFileSystem _fs;
+    public RealBrowserService(IFileSystem fs) => _fs = fs;
+
+    public IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false)
+    {
+        if (!_fs.DirectoryExists(path)) return Enumerable.Empty<BrowserItem>();
+
+        var items = new List<BrowserItem>();
+
+        try
+        {
+            var dirs = _fs.GetDirectories(path)
+                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
+
+            var sortedDirs = descending ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
+
+            foreach (var dir in sortedDirs)
+            {
+                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+
+                items.Add(new BrowserItem
+                {
+                    DisplayName = dir.Name,
+                    FullPath = dir.Path,
+                    IsDirectory = true
+                });
+            }
+
+            var files = _fs.GetFiles(path, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
+                .Select(f =>
+                {
+                    var fn = Path.GetFileName(f);
+                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
+                });
+
+            var filteredFiles = files.Where(f =>
+                string.IsNullOrEmpty(filter) ||
+                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+            var sortedFiles = descending ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
+
+            foreach (var file in sortedFiles)
+            {
+                items.Add(new BrowserItem
+                {
+                    DisplayName = file.DisplayName,
+                    FullPath = file.Path,
+                    IsDirectory = false
+                });
+            }
+        }
+        catch { }
+
+        return items;
+    }
+}
 
 public class ToolboxApp
 {
@@ -1407,7 +1553,7 @@ public class ToolboxApp
             var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
             _console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
 
-            await Task.Delay(config.Downloader.DownloadDelayMs);
+            if (config.Downloader.DownloadDelayMs > 0) await Task.Delay(config.Downloader.DownloadDelayMs);
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null)
             {
@@ -1417,7 +1563,7 @@ public class ToolboxApp
 
             foreach (var map in fullCampaign.Playlist)
             {
-                await Task.Delay(config.Downloader.DownloadDelayMs);
+                if (config.Downloader.DownloadDelayMs > 0) await Task.Delay(config.Downloader.DownloadDelayMs);
                 var deformattedMapName = TextFormatter.Deformat(map.Name);
                 _console.Write($"  - {deformattedMapName}... ");
 
