@@ -201,7 +201,7 @@ public static class TrackmaniaCLI
             new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
             new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
             new AppConfig(force, interactive, play, setGamePath, extraPaths),
-            new DesktopConfig(defaultMapsFolder, true, true)
+            new DesktopConfig(defaultMapsFolder, true, true, false)
         );
     }
 

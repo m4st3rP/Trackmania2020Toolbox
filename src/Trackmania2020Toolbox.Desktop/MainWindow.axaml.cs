@@ -327,6 +327,7 @@ public partial class MainWindow : Window
         _browserFolderInput.Text = config.Desktop.BrowserFolder;
         _doubleClickToPlayCheck.IsChecked = config.Desktop.DoubleClickToPlay;
         _enterToPlayCheck.IsChecked = config.Desktop.EnterToPlay;
+        _playAfterDownloadCheck.IsChecked = config.Desktop.PlayAfterDownload;
     }
 
     private void SaveConfig()
@@ -338,7 +339,8 @@ public partial class MainWindow : Window
                 _gamePathInput.Text,
                 _browserFolderInput.Text,
                 _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true);
+                _enterToPlayCheck.IsChecked ?? true,
+                _playAfterDownloadCheck.IsChecked ?? false);
 
             AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
             RefreshBrowser();

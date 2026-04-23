@@ -547,7 +547,7 @@ public class ToolboxTests
     [Theory]
     [InlineData("MapName.Map.Gbx", "MapName.Map.Gbx")]
     [InlineData("MapName.Gbx", "MapName.Gbx")]
-    [InlineData("MapName", "MapName")]
+    [InlineData("MapName", "MapName.Map.Gbx")]
     [InlineData("  MapName.Map.Gbx  ", "MapName.Map.Gbx")]
     [InlineData("MapName.MAP.GBX", "MapName.Map.Gbx")]
     [InlineData("MapName.GBX", "MapName.Gbx")]
