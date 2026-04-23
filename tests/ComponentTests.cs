@@ -103,7 +103,7 @@ public class ComponentTests : IDisposable
             new TmxConfig(null, null, null, null, "name", false, false),
             new FixerConfig(_tempDir, true, true, true, false),
             new AppConfig(false, true, false, null, new List<string>()),
-            new DesktopConfig(_tempDir, true, true)
+            new DesktopConfig(_tempDir, true, true, false)
         );
 
         var processed = _app.RunBatchFixer(config);

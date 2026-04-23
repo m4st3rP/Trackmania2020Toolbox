@@ -99,7 +99,7 @@ public interface IBrowserService
 public interface IConfigService
 {
     Config LoadConfig(string scriptDirectory);
-    void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay);
+    void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload);
 }
 
 public class RealConfigService : IConfigService
@@ -118,6 +118,7 @@ public class RealConfigService : IConfigService
         string? browserFolder = null;
         bool doubleClickToPlay = true;
         bool enterToPlay = true;
+        bool playAfterDownload = false;
 
         if (_fs.FileExists(configPath))
         {
@@ -130,10 +131,11 @@ public class RealConfigService : IConfigService
                 if (model.ContainsKey("browser_folder")) browserFolder = model["browser_folder"]?.ToString();
                 if (model.ContainsKey("double_click_to_play")) doubleClickToPlay = bool.Parse(model["double_click_to_play"]?.ToString() ?? "true");
                 if (model.ContainsKey("enter_to_play")) enterToPlay = bool.Parse(model["enter_to_play"]?.ToString() ?? "true");
+                if (model.ContainsKey("play_after_download")) playAfterDownload = bool.Parse(model["play_after_download"]?.ToString() ?? "false");
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback to defaults on error
+                Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
             }
         }
 
@@ -143,12 +145,12 @@ public class RealConfigService : IConfigService
             new DownloaderConfig(null, null, null, null, null, null, null),
             new TmxConfig(null, null, null, null, "name", false, false),
             new FixerConfig(browserFolder ?? defaultMapsFolder, false, true, true, false),
-            new AppConfig(false, true, false, gamePath, new List<string>()),
-            new DesktopConfig(browserFolder ?? defaultMapsFolder, doubleClickToPlay, enterToPlay)
+            new AppConfig(false, true, playAfterDownload, gamePath, new List<string>()),
+            new DesktopConfig(browserFolder ?? defaultMapsFolder, doubleClickToPlay, enterToPlay, playAfterDownload)
         );
     }
 
-    public void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay)
+    public void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
         var model = new Tomlyn.Model.TomlTable
@@ -156,7 +158,8 @@ public class RealConfigService : IConfigService
             ["game_path"] = gamePath ?? "",
             ["browser_folder"] = browserFolder ?? "",
             ["double_click_to_play"] = doubleClickToPlay,
-            ["enter_to_play"] = enterToPlay
+            ["enter_to_play"] = enterToPlay,
+            ["play_after_download"] = playAfterDownload
         };
 
         var content = TomlSerializer.Serialize(model);
@@ -232,7 +235,7 @@ public record AppConfig(
 );
 
 public record DesktopConfig(
-    string BrowserFolder, bool DoubleClickToPlay, bool EnterToPlay
+    string BrowserFolder, bool DoubleClickToPlay, bool EnterToPlay, bool PlayAfterDownload
 );
 
 public record Config(
@@ -612,7 +615,7 @@ public class ToolboxApp
         try
         {
             var config = _configService.LoadConfig(_scriptDirectory);
-            _configService.SaveConfig(_scriptDirectory, path, config.Desktop.BrowserFolder, config.Desktop.DoubleClickToPlay, config.Desktop.EnterToPlay);
+            _configService.SaveConfig(_scriptDirectory, path, config.Desktop.BrowserFolder, config.Desktop.DoubleClickToPlay, config.Desktop.EnterToPlay, config.Desktop.PlayAfterDownload);
             _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)
@@ -1269,7 +1272,7 @@ public class ToolboxApp
             var (name, rawFileName, url, prefix) = mapList[i];
             if (string.IsNullOrEmpty(url)) continue;
 
-            var fileName = rawFileName ?? name;
+            var fileName = (rawFileName ?? name).Trim();
             var deformattedName = TextFormatter.Deformat(name);
             fileName = TextFormatter.Deformat(fileName);
 
@@ -1287,6 +1290,7 @@ public class ToolboxApp
             else
             {
                 fileName = fileName.Trim();
+                extension = ".Map.Gbx";
             }
             fileName += extension;
 
