@@ -257,7 +257,8 @@ public partial class MainWindow : Window
             new DesktopConfig(
                 _browserFolderInput.Text ?? _app._defaultMapsFolder,
                 _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true
+                _enterToPlayCheck.IsChecked ?? true,
+                _playAfterDownloadCheck.IsChecked ?? false
             )
         );
     }

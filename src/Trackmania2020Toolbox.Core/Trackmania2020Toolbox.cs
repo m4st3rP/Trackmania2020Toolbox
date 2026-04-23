@@ -127,11 +127,14 @@ public class RealConfigService : IConfigService
                 var content = string.Join("\n", _fs.ReadAllLines(configPath));
                 var model = TomlSerializer.Deserialize<Tomlyn.Model.TomlTable>(content);
 
-                if (model.ContainsKey("game_path")) gamePath = model["game_path"]?.ToString();
-                if (model.ContainsKey("browser_folder")) browserFolder = model["browser_folder"]?.ToString();
-                if (model.ContainsKey("double_click_to_play")) doubleClickToPlay = bool.Parse(model["double_click_to_play"]?.ToString() ?? "true");
-                if (model.ContainsKey("enter_to_play")) enterToPlay = bool.Parse(model["enter_to_play"]?.ToString() ?? "true");
-                if (model.ContainsKey("play_after_download")) playAfterDownload = bool.Parse(model["play_after_download"]?.ToString() ?? "false");
+                if (model != null)
+                {
+                    if (model.ContainsKey("game_path")) gamePath = model["game_path"]?.ToString();
+                    if (model.ContainsKey("browser_folder")) browserFolder = model["browser_folder"]?.ToString();
+                    if (model.ContainsKey("double_click_to_play")) doubleClickToPlay = bool.Parse(model["double_click_to_play"]?.ToString() ?? "true");
+                    if (model.ContainsKey("enter_to_play")) enterToPlay = bool.Parse(model["enter_to_play"]?.ToString() ?? "true");
+                    if (model.ContainsKey("play_after_download")) playAfterDownload = bool.Parse(model["play_after_download"]?.ToString() ?? "false");
+                }
             }
             catch (Exception ex)
             {
