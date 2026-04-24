@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Tomlyn;
+using Tomlyn.Model;
+using Tomlyn.Serialization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -7,7 +10,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
-using Tomlyn;
 using GBX.NET;
 using GBX.NET.Engines.Game;
 using GBX.NET.LZO;
@@ -28,14 +30,6 @@ public interface ITrackmaniaMap { string Name { get; } string? FileName { get; }
 public interface ITrackOfTheDayCollection { int Year { get; } int Month { get; } IEnumerable<ITrackOfTheDayDay> Days { get; } }
 public interface ILeaderboard { IEnumerable<IRecord> Tops { get; } }
 public interface IRecord { TimeInt32 Time { get; } }
-
-public class BrowserItem
-{
-    public string DisplayName { get; set; } = string.Empty;
-    public string FullPath { get; set; } = string.Empty;
-    public bool IsDirectory { get; set; }
-    public string Icon => IsDirectory ? "📁" : "📄";
-}
 
 public interface ITmxMap { int Id { get; } string Name { get; } string AuthorName { get; } int AwardCount { get; } int DownloadCount { get; } }
 public interface ITmxMapPack { int Id { get; } string Name { get; } }
@@ -68,7 +62,6 @@ public interface IFileSystem
     bool FileExists(string path);
     Task WriteAllBytesAsync(string path, byte[] bytes);
     void WriteAllText(string path, string contents);
-    string ReadAllText(string path);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
@@ -87,17 +80,6 @@ public interface IMapFixer
 
 public interface IDateTime { DateTime UtcNow { get; } }
 
-public interface IConfigService
-{
-    Task<Config> LoadConfigAsync();
-    Task SaveConfigAsync(Config config);
-}
-
-public interface IBrowserService
-{
-    IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false);
-}
-
 public interface IConsole
 {
     void WriteLine(string? value = null);
@@ -106,11 +88,184 @@ public interface IConsole
     Task<int> SelectItemAsync(string title, IEnumerable<string> items);
 }
 
-public record DownloaderConfig(
-    string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
-    string? ExportMedalsPlayerId, string? ExportMedalsCampaign, int DownloadDelayMs = 1000
-);
+public class BrowserItem
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public string FullPath { get; set; } = string.Empty;
+    public bool IsDirectory { get; set; }
+    public string Icon => IsDirectory ? "📁" : "📄";
 
+    public BrowserItem() { }
+
+    public BrowserItem(string displayName, string fullPath, bool isDirectory)
+    {
+        DisplayName = displayName;
+        FullPath = fullPath;
+        IsDirectory = isDirectory;
+    }
+}
+
+public interface IBrowserService
+{
+    IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false);
+    IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending);
+}
+
+public interface IConfigService
+{
+    Task<Config> LoadConfigAsync();
+    Task SaveConfigAsync(Config config);
+    Config LoadConfig();
+    void SaveConfig(Config config);
+}
+
+[TomlSerializable(typeof(TomlTable))]
+internal partial class ToolboxConfigContext : TomlSerializerContext { }
+
+public class RealConfigService : IConfigService
+{
+    private readonly string _path;
+    private readonly IFileSystem _fs;
+
+    public RealConfigService(string configPath, IFileSystem fs)
+    {
+        _path = configPath;
+        _fs = fs;
+    }
+
+    public async Task<Config> LoadConfigAsync()
+    {
+        return await Task.Run(LoadConfig);
+    }
+
+    public async Task SaveConfigAsync(Config config)
+    {
+        await Task.Run(() => SaveConfig(config));
+    }
+
+    public Config LoadConfig()
+    {
+        if (!_fs.FileExists(_path)) return Config.Default;
+
+        try
+        {
+            var content = string.Join("\n", _fs.ReadAllLines(_path));
+            var model = TomlSerializer.Deserialize<TomlTable>(content, ToolboxConfigContext.Default.TomlTable);
+
+            if (model == null) return Config.Default;
+
+            var gamePath = model.ContainsKey("game_path") ? model["game_path"]?.ToString() : null;
+            var browserFolder = model.ContainsKey("browser_folder") ? model["browser_folder"]?.ToString() : null;
+            var doubleClickToPlay = model.ContainsKey("double_click_to_play") ? bool.Parse(model["double_click_to_play"]?.ToString() ?? "true") : true;
+            var enterToPlay = model.ContainsKey("enter_to_play") ? bool.Parse(model["enter_to_play"]?.ToString() ?? "true") : true;
+            var playAfterDownload = model.ContainsKey("play_after_download") ? bool.Parse(model["play_after_download"]?.ToString() ?? "false") : false;
+
+            var def = Config.Default;
+            return def with
+            {
+                App = def.App with { SetGamePath = gamePath, Play = playAfterDownload },
+                Fixer = def.Fixer with { FolderPath = browserFolder ?? def.Fixer.FolderPath },
+                Desktop = def.Desktop with
+                {
+                    GamePath = gamePath ?? "",
+                    BrowserFolder = browserFolder ?? def.Desktop.BrowserFolder,
+                    DoubleClickToPlay = doubleClickToPlay,
+                    EnterToPlay = enterToPlay,
+                    PlayAfterDownload = playAfterDownload
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load config: {ex.Message}");
+            return Config.Default;
+        }
+    }
+
+    public void SaveConfig(Config config)
+    {
+        try
+        {
+            var model = new TomlTable
+            {
+                ["game_path"] = config.Desktop.GamePath ?? "",
+                ["browser_folder"] = config.Desktop.BrowserFolder ?? "",
+                ["double_click_to_play"] = config.Desktop.DoubleClickToPlay,
+                ["enter_to_play"] = config.Desktop.EnterToPlay,
+                ["play_after_download"] = config.Desktop.PlayAfterDownload
+            };
+            var content = TomlSerializer.Serialize(model, ToolboxConfigContext.Default.TomlTable);
+            _fs.WriteAllText(_path, content);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save config: {ex.Message}");
+        }
+    }
+}
+
+public class RealBrowserService : IBrowserService
+{
+    private readonly IFileSystem _fs;
+    public RealBrowserService(IFileSystem fs) => _fs = fs;
+
+    public IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false)
+    {
+        if (!_fs.DirectoryExists(path)) return Enumerable.Empty<BrowserItem>();
+
+        var items = new List<BrowserItem>();
+
+        try
+        {
+            var dirs = _fs.GetDirectories(path)
+                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
+
+            var sortedDirs = descending ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
+
+            foreach (var dir in sortedDirs)
+            {
+                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+
+                items.Add(new BrowserItem
+                {
+                    DisplayName = dir.Name,
+                    FullPath = dir.Path,
+                    IsDirectory = true
+                });
+            }
+
+            var files = _fs.GetFiles(path, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
+                .Select(f =>
+                {
+                    var fn = Path.GetFileName(f);
+                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
+                });
+
+            var filteredFiles = files.Where(f =>
+                string.IsNullOrEmpty(filter) ||
+                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+            var sortedFiles = descending ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
+
+            foreach (var file in sortedFiles)
+            {
+                items.Add(new BrowserItem
+                {
+                    DisplayName = file.DisplayName,
+                    FullPath = file.Path,
+                    IsDirectory = false
+                });
+            }
+        }
+        catch { }
+
+        return items;
+    }
+
+    public IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending) => GetItems(directory, filter, descending);
+}
+public record DownloaderConfig(string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate, string? ExportMedalsPlayerId, string? ExportMedalsCampaign, int DownloadDelayMs = 1000);
 public record TmxConfig(
     string? TmxMaps, string? TmxPacks, string? TmxSearch, string? TmxAuthor, string TmxSort, bool TmxDesc, bool TmxRandom
 );
@@ -124,7 +279,7 @@ public record AppConfig(
 );
 
 public record DesktopConfig(
-    string GamePath = "", string BrowserFolder = "", bool DoubleClickToPlay = true, bool EnterToPlay = true
+    string GamePath = "", string BrowserFolder = "", bool DoubleClickToPlay = true, bool EnterToPlay = true, bool PlayAfterDownload = false
 );
 
 public record Config(
@@ -337,7 +492,6 @@ public class RealFileSystem : IFileSystem
     public bool FileExists(string path) => File.Exists(path);
     public Task WriteAllBytesAsync(string path, byte[] bytes) => File.WriteAllBytesAsync(path, bytes);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
-    public string ReadAllText(string path) => File.ReadAllText(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
@@ -390,107 +544,6 @@ public class RealMapFixer : IMapFixer
 
 public class RealDateTime : IDateTime { public DateTime UtcNow => DateTime.UtcNow; }
 
-public class RealConfigService : IConfigService
-{
-    private readonly string _path;
-    private readonly IFileSystem _fs;
-
-    public RealConfigService(string scriptDirectory, IFileSystem fs)
-    {
-        _path = Path.Combine(scriptDirectory, "config.toml");
-        _fs = fs;
-    }
-
-    public async Task<Config> LoadConfigAsync()
-    {
-        if (!_fs.FileExists(_path)) return Config.Default;
-
-        try
-        {
-            var content = _fs.ReadAllText(_path);
-            return TomlSerializer.Deserialize<Config>(content) ?? Config.Default;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to load config: {ex.Message}");
-            return Config.Default;
-        }
-    }
-
-    public Task SaveConfigAsync(Config config)
-    {
-        try
-        {
-            var content = TomlSerializer.Serialize(config);
-            _fs.WriteAllText(_path, content);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to save config: {ex.Message}");
-        }
-        return Task.CompletedTask;
-    }
-}
-
-public class RealBrowserService : IBrowserService
-{
-    private readonly IFileSystem _fs;
-    public RealBrowserService(IFileSystem fs) => _fs = fs;
-
-    public IEnumerable<BrowserItem> GetItems(string path, string? filter = null, bool descending = false)
-    {
-        if (!_fs.DirectoryExists(path)) return Enumerable.Empty<BrowserItem>();
-
-        var items = new List<BrowserItem>();
-
-        try
-        {
-            var dirs = _fs.GetDirectories(path)
-                .Select(d => new { Path = d, Name = Path.GetFileName(d) });
-
-            var sortedDirs = descending ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
-
-            foreach (var dir in sortedDirs)
-            {
-                if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-
-                items.Add(new BrowserItem
-                {
-                    DisplayName = dir.Name,
-                    FullPath = dir.Path,
-                    IsDirectory = true
-                });
-            }
-
-            var files = _fs.GetFiles(path, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
-                .Select(f =>
-                {
-                    var fn = Path.GetFileName(f);
-                    return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
-                });
-
-            var filteredFiles = files.Where(f =>
-                string.IsNullOrEmpty(filter) ||
-                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
-            var sortedFiles = descending ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
-
-            foreach (var file in sortedFiles)
-            {
-                items.Add(new BrowserItem
-                {
-                    DisplayName = file.DisplayName,
-                    FullPath = file.Path,
-                    IsDirectory = false
-                });
-            }
-        }
-        catch { }
-
-        return items;
-    }
-}
 
 public class ToolboxApp
 {
@@ -506,10 +559,11 @@ public class ToolboxApp
     private readonly IMapFixer _fixer;
     private readonly IConsole _console;
     private readonly IDateTime _dateTime;
+    private readonly IConfigService _configService;
     public readonly string _scriptDirectory;
     public readonly string _defaultMapsFolder;
 
-    public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory)
+    public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
     {
         _api = api;
         _fs = fs;
@@ -518,6 +572,7 @@ public class ToolboxApp
         _console = console;
         _dateTime = dateTime;
         _scriptDirectory = scriptDirectory;
+        _configService = configService ?? new RealConfigService(Path.Combine(scriptDirectory, "config.toml"), fs);
         _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
     }
 
@@ -617,11 +672,16 @@ public class ToolboxApp
 
     private void SaveGamePath(string path)
     {
-        var configPath = Path.Combine(_scriptDirectory, "config.toml");
         try
         {
-            _fs.WriteAllText(configPath, $"game_path = \"{path}\"\n");
-            _console.WriteLine($"Game path saved to: {configPath}");
+            var config = _configService.LoadConfig();
+            var newConfig = config with
+            {
+                App = config.App with { SetGamePath = path },
+                Desktop = config.Desktop with { GamePath = path }
+            };
+            _configService.SaveConfig(newConfig);
+            _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)
         {
@@ -631,22 +691,8 @@ public class ToolboxApp
 
     private string? GetGamePath()
     {
-        var configPath = Path.Combine(_scriptDirectory, "config.toml");
-        if (!_fs.FileExists(configPath)) return null;
-
-        var lines = _fs.ReadAllLines(configPath);
-        foreach (var line in lines)
-        {
-            if (line.Trim().StartsWith("game_path", StringComparison.OrdinalIgnoreCase))
-            {
-                var parts = line.Split('=', 2);
-                if (parts.Length == 2)
-                {
-                    return parts[1].Trim().Trim('"');
-                }
-            }
-        }
-        return null;
+        var config = _configService.LoadConfig();
+        return config.App.SetGamePath;
     }
 
     private void LaunchGame(List<string> mapPaths)
@@ -1291,7 +1337,7 @@ public class ToolboxApp
             var (name, rawFileName, url, prefix) = mapList[i];
             if (string.IsNullOrEmpty(url)) continue;
 
-            var fileName = rawFileName ?? name;
+            var fileName = (rawFileName ?? name).Trim();
             var deformattedName = TextFormatter.Deformat(name);
             fileName = TextFormatter.Deformat(fileName);
 
@@ -1309,6 +1355,7 @@ public class ToolboxApp
             else
             {
                 fileName = fileName.Trim();
+                extension = ".Map.Gbx";
             }
             fileName += extension;
 
@@ -1553,7 +1600,7 @@ public class ToolboxApp
             var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
             _console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
 
-            if (config.Downloader.DownloadDelayMs > 0) await Task.Delay(config.Downloader.DownloadDelayMs);
+            await Task.Delay(config.Downloader.DownloadDelayMs);
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null)
             {
@@ -1563,7 +1610,7 @@ public class ToolboxApp
 
             foreach (var map in fullCampaign.Playlist)
             {
-                if (config.Downloader.DownloadDelayMs > 0) await Task.Delay(config.Downloader.DownloadDelayMs);
+                await Task.Delay(config.Downloader.DownloadDelayMs);
                 var deformattedMapName = TextFormatter.Deformat(map.Name);
                 _console.Write($"  - {deformattedMapName}... ");
 

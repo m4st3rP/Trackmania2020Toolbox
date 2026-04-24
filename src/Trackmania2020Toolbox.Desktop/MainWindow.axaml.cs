@@ -17,11 +17,12 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox.Desktop;
 
+
 public partial class MainWindow : Window
 {
     private readonly ToolboxApp _app;
-    private readonly IConfigService _configService;
     private readonly IBrowserService _browserService;
+    private readonly IConfigService _configService;
     private readonly TextBox _logOutput;
     private readonly TextBox _weeklyShortsInput;
     private readonly TextBox _weeklyGrandsInput;
@@ -58,7 +59,6 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BrowserItem> _browserItems = new();
     private string _currentBrowserDirectory = string.Empty;
     private FileSystemWatcher? _watcher;
-    private Config _config = Config.Default;
 
     public MainWindow()
     {
@@ -104,17 +104,21 @@ public partial class MainWindow : Window
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         var dateTime = new RealDateTime();
-        _configService = new RealConfigService(TrackmaniaCLI.GetScriptDirectory(), fs);
         _browserService = new RealBrowserService(fs);
+        _configService = new RealConfigService(Path.Combine(TrackmaniaCLI.GetScriptDirectory(), "config.toml"), fs);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
             TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Add("User-Agent", TrackmaniaCLI.UserAgent);
 
-        _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory());
+        _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory(), _configService);
 
         // Load initial settings
-        _ = InitializeAsync();
+        _fixerFolderInput.Text = _app._defaultMapsFolder;
+        _browserFolderInput.Text = _app._defaultMapsFolder;
+        LoadConfig();
+        _currentBrowserDirectory = _browserFolderInput.Text;
+        RefreshBrowser();
 
         // Wire up buttons
         this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShorts(_weeklyShortsInput.Text ?? "latest", GetConfig()));
@@ -233,23 +237,25 @@ public partial class MainWindow : Window
 
     private Config GetConfig()
     {
-        return _config with
-        {
-            Fixer = _config.Fixer with
-            {
-                FolderPath = _fixerFolderInput.Text ?? _app._defaultMapsFolder,
-                ExplicitFolder = true,
-                UpdateTitle = _updateTitleCheck.IsChecked ?? true,
-                ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true,
-                DryRun = _dryRunCheck.IsChecked ?? false
-            },
-            App = _config.App with
-            {
-                ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false,
-                Interactive = true,
-                Play = _playAfterDownloadCheck.IsChecked ?? false
-            }
-        };
+        return new Config(
+            new DownloaderConfig(null, null, null, null, null, null, null),
+            new TmxConfig(null, null, null, null, "name", false, false),
+            new FixerConfig(
+                _fixerFolderInput.Text ?? _app._defaultMapsFolder,
+                true, // Use explicit folder
+                _updateTitleCheck.IsChecked ?? true,
+                _convertMapTypeCheck.IsChecked ?? true,
+                _dryRunCheck.IsChecked ?? false
+            ),
+            new AppConfig(
+                _forceOverwriteCheck.IsChecked ?? false,
+                true, // interactive
+                _playAfterDownloadCheck.IsChecked ?? false,
+                null,
+                new List<string>()
+            ),
+            new DesktopConfig(_gamePathInput.Text ?? "", _browserFolderInput.Text ?? _app._defaultMapsFolder, _doubleClickToPlayCheck.IsChecked ?? true, _enterToPlayCheck.IsChecked ?? true, _playAfterDownloadCheck.IsChecked ?? false)
+        );
     }
 
     private async Task RunTask(Func<Task> task)
@@ -271,6 +277,7 @@ public partial class MainWindow : Window
             var paths = await task();
             if (paths.Count > 0)
             {
+                RefreshBrowser();
                 if (_playAfterDownloadCheck.IsChecked ?? false)
                 {
                     LaunchGame(paths);
@@ -309,35 +316,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task InitializeAsync()
+    private void LoadConfig()
     {
-        _config = await _configService.LoadConfigAsync();
-        _fixerFolderInput.Text = _config.Fixer.FolderPath;
-        _browserFolderInput.Text = _config.Desktop.BrowserFolder;
-        _gamePathInput.Text = _config.Desktop.GamePath;
-        _doubleClickToPlayCheck.IsChecked = _config.Desktop.DoubleClickToPlay;
-        _enterToPlayCheck.IsChecked = _config.Desktop.EnterToPlay;
-        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
-        RefreshBrowser();
+        var config = _configService.LoadConfig();
+        _gamePathInput.Text = config.App.SetGamePath;
+        _browserFolderInput.Text = config.Desktop.BrowserFolder;
+        _doubleClickToPlayCheck.IsChecked = config.Desktop.DoubleClickToPlay;
+        _enterToPlayCheck.IsChecked = config.Desktop.EnterToPlay;
+        _playAfterDownloadCheck.IsChecked = config.Desktop.PlayAfterDownload;
     }
 
-    private async void SaveConfig()
+    private void SaveConfig()
     {
-        _config = _config with
+        try
         {
-            Fixer = _config.Fixer with { FolderPath = _fixerFolderInput.Text ?? "" },
-            Desktop = _config.Desktop with
-            {
-                GamePath = _gamePathInput.Text ?? "",
-                BrowserFolder = _browserFolderInput.Text ?? "",
-                DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true,
-                EnterToPlay = _enterToPlayCheck.IsChecked ?? true
-            }
-        };
+            var config = GetConfig();
+            _configService.SaveConfig(config);
 
-        await _configService.SaveConfigAsync(_config);
-        AppendLog("Settings saved." + Environment.NewLine);
-        RefreshBrowser();
+            AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
+            RefreshBrowser();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Error saving config: {ex.Message}{Environment.NewLine}");
+        }
     }
 
     private void RefreshBrowser()
@@ -356,12 +358,19 @@ public partial class MainWindow : Window
         _browserItems.Clear();
 
         var filter = _browserSearchInput.Text ?? "";
-        bool descending = _browserSortCombo.SelectedIndex == 1;
 
-        var items = _browserService.GetItems(_currentBrowserDirectory, filter, descending);
-        foreach (var item in items)
+        try
         {
-            _browserItems.Add(item);
+            bool desc = _browserSortCombo.SelectedIndex == 1;
+            var items = _browserService.GetBrowserItems(_currentBrowserDirectory, filter, desc);
+            foreach (var item in items)
+            {
+                _browserItems.Add(item);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Error refreshing browser: {ex.Message}{Environment.NewLine}");
         }
 
         SetupWatcher();

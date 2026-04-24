@@ -63,9 +63,11 @@ public static class TrackmaniaCLI
         }
 
         var fs = new RealFileSystem();
-        var configService = new RealConfigService(GetScriptDirectory(), fs);
-        var config = await configService.LoadConfigAsync();
-        config = ParseArguments(args, config);
+        var scriptDir = GetScriptDirectory();
+        var configService = new RealConfigService(Path.Combine(scriptDir, "config.toml"), fs);
+        var baseConfig = await configService.LoadConfigAsync();
+
+        var config = ParseArguments(args, baseConfig);
 
         using var api = new TrackmaniaApiWrapper(HttpClient, UserAgent);
         var net = new RealNetworkService(HttpClient);
@@ -73,17 +75,13 @@ public static class TrackmaniaCLI
         var console = new RealConsole();
         var dateTime = new RealDateTime();
 
-        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, GetScriptDirectory());
+        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, configService);
         await app.RunAsync(config);
-
-        if (config.App.SetGamePath != null)
-        {
-            await configService.SaveConfigAsync(config with { Desktop = config.Desktop with { GamePath = config.App.SetGamePath } });
-        }
     }
 
-    public static Config ParseArguments(string[] args, Config config)
+    public static Config ParseArguments(string[] args, Config? baseConfig = null)
     {
+        baseConfig ??= Config.Default;
         string? weeklyShorts = null;
         string? weeklyGrands = null;
         string? seasonal = null;
@@ -95,18 +93,18 @@ public static class TrackmaniaCLI
         string? tmxPacks = null;
         string? tmxSearch = null;
         string? tmxAuthor = null;
-        string tmxSort = config.Tmx.TmxSort;
-        bool tmxDesc = config.Tmx.TmxDesc;
-        bool tmxRandom = config.Tmx.TmxRandom;
-        string folder = config.Fixer.FolderPath;
-        bool explicitFolder = config.Fixer.ExplicitFolder;
-        bool skipTitleUpdate = !config.Fixer.UpdateTitle;
-        bool skipMapTypeConvert = !config.Fixer.ConvertPlatformMapType;
-        bool dryRun = config.Fixer.DryRun;
-        bool force = config.App.ForceOverwrite;
-        bool interactive = config.App.Interactive;
-        bool play = config.App.Play;
-        string? setGamePath = null;
+        string tmxSort = "name";
+        bool tmxDesc = false;
+        bool tmxRandom = false;
+        string folder = baseConfig.Fixer.FolderPath;
+        bool explicitFolder = baseConfig.Fixer.ExplicitFolder;
+        bool skipTitleUpdate = !baseConfig.Fixer.UpdateTitle;
+        bool skipMapTypeConvert = !baseConfig.Fixer.ConvertPlatformMapType;
+        bool dryRun = baseConfig.Fixer.DryRun;
+        bool force = baseConfig.App.ForceOverwrite;
+        bool interactive = baseConfig.App.Interactive;
+        bool play = baseConfig.App.Play;
+        string? setGamePath = baseConfig.App.SetGamePath;
         var extraPaths = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
@@ -201,44 +199,12 @@ public static class TrackmaniaCLI
             }
         }
 
-        return config with
+        return baseConfig with
         {
-            Downloader = config.Downloader with
-            {
-                WeeklyShorts = weeklyShorts,
-                WeeklyGrands = weeklyGrands,
-                Seasonal = seasonal,
-                ClubCampaign = clubCampaign,
-                ToTDDate = totdDate,
-                ExportMedalsPlayerId = exportMedalsPlayerId,
-                ExportMedalsCampaign = exportMedalsCampaign
-            },
-            Tmx = config.Tmx with
-            {
-                TmxMaps = tmxMaps,
-                TmxPacks = tmxPacks,
-                TmxSearch = tmxSearch,
-                TmxAuthor = tmxAuthor,
-                TmxSort = tmxSort,
-                TmxDesc = tmxDesc,
-                TmxRandom = tmxRandom
-            },
-            Fixer = config.Fixer with
-            {
-                FolderPath = folder,
-                ExplicitFolder = explicitFolder,
-                UpdateTitle = !skipTitleUpdate,
-                ConvertPlatformMapType = !skipMapTypeConvert,
-                DryRun = dryRun
-            },
-            App = config.App with
-            {
-                ForceOverwrite = force,
-                Interactive = interactive,
-                Play = play,
-                SetGamePath = setGamePath,
-                ExtraPaths = extraPaths
-            }
+            Downloader = new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
+            Tmx = new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
+            Fixer = new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
+            App = new AppConfig(force, interactive, play, setGamePath, extraPaths)
         };
     }
 
