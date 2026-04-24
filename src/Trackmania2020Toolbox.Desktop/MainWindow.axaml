@@ -206,6 +206,9 @@
                             <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseBrowserFolderBtn"/>
                         </Grid>
 
+                        <TextBlock Text="Download Delay (ms):"/>
+                        <NumericUpDown Name="DownloadDelayMsInput" Minimum="0" Maximum="10000" Increment="100"/>
+
                         <Button Content="Save Settings" Name="SaveSettingsBtn"/>
 
                         <Separator Margin="0,10"/>
