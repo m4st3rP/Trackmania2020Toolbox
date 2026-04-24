@@ -101,10 +101,10 @@ public interface IBrowserService
 public interface IConfigService
 {
     Config LoadConfig(string scriptDirectory);
-    void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload);
+    void SaveConfig(string scriptDirectory, Config config);
 }
 
-[TomlSerializable(typeof(TomlTable))]
+[TomlSerializable(typeof(Config))]
 internal partial class ToolboxConfigContext : TomlSerializerContext { }
 
 public class RealConfigService : IConfigService
@@ -119,27 +119,13 @@ public class RealConfigService : IConfigService
     public Config LoadConfig(string scriptDirectory)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
-        string? gamePath = null;
-        string? browserFolder = null;
-        bool doubleClickToPlay = true;
-        bool enterToPlay = true;
-        bool playAfterDownload = false;
-
         if (_fs.FileExists(configPath))
         {
             try
             {
                 var content = string.Join("\n", _fs.ReadAllLines(configPath));
-                var model = TomlSerializer.Deserialize<TomlTable>(content, ToolboxConfigContext.Default.TomlTable);
-
-                if (model != null)
-                {
-                    if (model.ContainsKey("game_path")) gamePath = model["game_path"]?.ToString();
-                    if (model.ContainsKey("browser_folder")) browserFolder = model["browser_folder"]?.ToString();
-                    if (model.ContainsKey("double_click_to_play")) doubleClickToPlay = bool.Parse(model["double_click_to_play"]?.ToString() ?? "true");
-                    if (model.ContainsKey("enter_to_play")) enterToPlay = bool.Parse(model["enter_to_play"]?.ToString() ?? "true");
-                    if (model.ContainsKey("play_after_download")) playAfterDownload = bool.Parse(model["play_after_download"]?.ToString() ?? "false");
-                }
+                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                if (config != null) return config;
             }
             catch (Exception ex)
             {
@@ -147,30 +133,13 @@ public class RealConfigService : IConfigService
             }
         }
 
-        var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
-
-        return new Config(
-            new DownloaderConfig(null, null, null, null, null, null, null),
-            new TmxConfig(null, null, null, null, "name", false, false),
-            new FixerConfig(browserFolder ?? defaultMapsFolder, false, true, true, false),
-            new AppConfig(false, true, playAfterDownload, gamePath, new List<string>()),
-            new DesktopConfig(browserFolder ?? defaultMapsFolder, doubleClickToPlay, enterToPlay, playAfterDownload)
-        );
+        return Config.Default;
     }
 
-    public void SaveConfig(string scriptDirectory, string? gamePath, string? browserFolder, bool doubleClickToPlay, bool enterToPlay, bool playAfterDownload)
+    public void SaveConfig(string scriptDirectory, Config config)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
-        var model = new TomlTable
-        {
-            ["game_path"] = gamePath ?? "",
-            ["browser_folder"] = browserFolder ?? "",
-            ["double_click_to_play"] = doubleClickToPlay,
-            ["enter_to_play"] = enterToPlay,
-            ["play_after_download"] = playAfterDownload
-        };
-
-        var content = TomlSerializer.Serialize(model, ToolboxConfigContext.Default.TomlTable);
+        var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
         _fs.WriteAllText(configPath, content);
     }
 }
@@ -225,34 +194,75 @@ public class RealBrowserService : IBrowserService
     }
 }
 
-public record DownloaderConfig(
-    string? WeeklyShorts, string? WeeklyGrands, string? Seasonal, string? ClubCampaign, string? ToTDDate,
-    string? ExportMedalsPlayerId, string? ExportMedalsCampaign, int DownloadDelayMs = 1000
-);
+public class DownloaderConfig
+{
+    public string? WeeklyShorts { get; set; }
+    public string? WeeklyGrands { get; set; }
+    public string? Seasonal { get; set; }
+    public string? ClubCampaign { get; set; }
+    public string? ToTDDate { get; set; }
+    public string? ExportMedalsPlayerId { get; set; }
+    public string? ExportMedalsCampaign { get; set; }
+    public int DownloadDelayMs { get; set; } = 1000;
+}
 
-public record TmxConfig(
-    string? TmxMaps, string? TmxPacks, string? TmxSearch, string? TmxAuthor, string TmxSort, bool TmxDesc, bool TmxRandom
-);
+public class TmxConfig
+{
+    public string? TmxMaps { get; set; }
+    public string? TmxPacks { get; set; }
+    public string? TmxSearch { get; set; }
+    public string? TmxAuthor { get; set; }
+    public string TmxSort { get; set; } = "name";
+    public bool TmxDesc { get; set; }
+    public bool TmxRandom { get; set; }
+}
 
-public record FixerConfig(
-    string FolderPath, bool ExplicitFolder, bool UpdateTitle, bool ConvertPlatformMapType, bool DryRun
-);
+public class FixerConfig
+{
+    public string FolderPath { get; set; } = "";
+    public bool ExplicitFolder { get; set; }
+    public bool UpdateTitle { get; set; } = true;
+    public bool ConvertPlatformMapType { get; set; } = true;
+    public bool DryRun { get; set; }
+}
 
-public record AppConfig(
-    bool ForceOverwrite, bool Interactive, bool Play, string? SetGamePath, List<string> ExtraPaths
-);
+public class AppConfig
+{
+    public bool ForceOverwrite { get; set; }
+    public bool Interactive { get; set; } = true;
+    public bool Play { get; set; }
+    public string? SetGamePath { get; set; }
+    public List<string> ExtraPaths { get; set; } = new();
+}
 
-public record DesktopConfig(
-    string BrowserFolder, bool DoubleClickToPlay, bool EnterToPlay, bool PlayAfterDownload
-);
+public class DesktopConfig
+{
+    public string BrowserFolder { get; set; } = "";
+    public bool DoubleClickToPlay { get; set; } = true;
+    public bool EnterToPlay { get; set; } = true;
+    public bool PlayAfterDownload { get; set; }
+}
 
-public record Config(
-    DownloaderConfig Downloader,
-    TmxConfig Tmx,
-    FixerConfig Fixer,
-    AppConfig App,
-    DesktopConfig Desktop
-);
+public class Config
+{
+    public DownloaderConfig Downloader { get; set; } = new();
+    public TmxConfig Tmx { get; set; } = new();
+    public FixerConfig Fixer { get; set; } = new();
+    public AppConfig App { get; set; } = new();
+    public DesktopConfig Desktop { get; set; } = new();
+
+    public static Config Default
+    {
+        get
+        {
+            var config = new Config();
+            var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+            config.Fixer.FolderPath = defaultMapsFolder;
+            config.Desktop.BrowserFolder = defaultMapsFolder;
+            return config;
+        }
+    }
+}
 
 public class TrackmaniaApiWrapper : ITrackmaniaApi
 {
@@ -623,7 +633,8 @@ public class ToolboxApp
         try
         {
             var config = _configService.LoadConfig(_scriptDirectory);
-            _configService.SaveConfig(_scriptDirectory, path, config.Desktop.BrowserFolder, config.Desktop.DoubleClickToPlay, config.Desktop.EnterToPlay, config.Desktop.PlayAfterDownload);
+            config.App.SetGamePath = path;
+            _configService.SaveConfig(_scriptDirectory, config);
             _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)

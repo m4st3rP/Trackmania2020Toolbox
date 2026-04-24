@@ -104,7 +104,7 @@ public class ConfigServiceTests
     [Fact]
     public void LoadConfig_ShouldLoadCorrectValues()
     {
-        var toml = "game_path = \"/path/tm.exe\"\nbrowser_folder = \"/maps\"\ndouble_click_to_play = false\nenter_to_play = false\nplay_after_download = true";
+        var toml = "[App]\nSetGamePath = \"/path/tm.exe\"\n[Desktop]\nBrowserFolder = \"/maps\"\nDoubleClickToPlay = false\nEnterToPlay = false\nPlayAfterDownload = true";
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
         _fsMock.Setup(f => f.ReadAllLines(It.IsAny<string>())).Returns(toml.Split('\n'));
 
@@ -124,13 +124,20 @@ public class ConfigServiceTests
         _fsMock.Setup(f => f.WriteAllText(It.IsAny<string>(), It.IsAny<string>()))
                .Callback<string, string>((path, content) => capturedToml = content);
 
-        _service.SaveConfig("/test", "/path/tm.exe", "/maps", true, false, true);
+        var config = Config.Default;
+        config.App.SetGamePath = "/path/tm.exe";
+        config.Desktop.BrowserFolder = "/maps";
+        config.Desktop.DoubleClickToPlay = true;
+        config.Desktop.EnterToPlay = false;
+        config.Desktop.PlayAfterDownload = true;
 
-        Assert.Contains("game_path = \"/path/tm.exe\"", capturedToml);
-        Assert.Contains("browser_folder = \"/maps\"", capturedToml);
-        Assert.Contains("double_click_to_play = true", capturedToml);
-        Assert.Contains("enter_to_play = false", capturedToml);
-        Assert.Contains("play_after_download = true", capturedToml);
+        _service.SaveConfig("/test", config);
+
+        Assert.Contains("SetGamePath = \"/path/tm.exe\"", capturedToml);
+        Assert.Contains("BrowserFolder = \"/maps\"", capturedToml);
+        Assert.Contains("DoubleClickToPlay = true", capturedToml);
+        Assert.Contains("EnterToPlay = false", capturedToml);
+        Assert.Contains("PlayAfterDownload = true", capturedToml);
     }
 
     [Fact]

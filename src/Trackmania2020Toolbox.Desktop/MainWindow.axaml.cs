@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private readonly TextBox _medalsCampaignInput;
     private readonly TextBox _gamePathInput;
     private readonly TextBox _browserFolderInput;
+    private readonly NumericUpDown _downloadDelayMsInput;
     private readonly CheckBox _updateTitleCheck;
     private readonly CheckBox _convertMapTypeCheck;
     private readonly CheckBox _dryRunCheck;
@@ -85,6 +86,7 @@ public partial class MainWindow : Window
         _medalsCampaignInput = this.FindControl<TextBox>("MedalsCampaignInput")!;
         _gamePathInput = this.FindControl<TextBox>("GamePathInput")!;
         _browserFolderInput = this.FindControl<TextBox>("BrowserFolderInput")!;
+        _downloadDelayMsInput = this.FindControl<NumericUpDown>("DownloadDelayMsInput")!;
         _updateTitleCheck = this.FindControl<CheckBox>("UpdateTitleCheck")!;
         _convertMapTypeCheck = this.FindControl<CheckBox>("ConvertMapTypeCheck")!;
         _dryRunCheck = this.FindControl<CheckBox>("DryRunCheck")!;
@@ -237,30 +239,26 @@ public partial class MainWindow : Window
 
     private Config GetConfig()
     {
-        return new Config(
-            new DownloaderConfig(null, null, null, null, null, null, null),
-            new TmxConfig(null, null, null, null, "name", false, false),
-            new FixerConfig(
-                _fixerFolderInput.Text ?? _app._defaultMapsFolder,
-                true, // Use explicit folder
-                _updateTitleCheck.IsChecked ?? true,
-                _convertMapTypeCheck.IsChecked ?? true,
-                _dryRunCheck.IsChecked ?? false
-            ),
-            new AppConfig(
-                _forceOverwriteCheck.IsChecked ?? false,
-                true, // interactive
-                _playAfterDownloadCheck.IsChecked ?? false,
-                null,
-                new List<string>()
-            ),
-            new DesktopConfig(
-                _browserFolderInput.Text ?? _app._defaultMapsFolder,
-                _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true,
-                _playAfterDownloadCheck.IsChecked ?? false
-            )
-        );
+        var config = _configService.LoadConfig(_app._scriptDirectory);
+
+        config.Fixer.FolderPath = _fixerFolderInput.Text ?? _app._defaultMapsFolder;
+        config.Fixer.ExplicitFolder = true;
+        config.Fixer.UpdateTitle = _updateTitleCheck.IsChecked ?? true;
+        config.Fixer.ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true;
+        config.Fixer.DryRun = _dryRunCheck.IsChecked ?? false;
+
+        config.App.ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false;
+        config.App.Interactive = true;
+        config.App.Play = _playAfterDownloadCheck.IsChecked ?? false;
+
+        config.Desktop.BrowserFolder = _browserFolderInput.Text ?? _app._defaultMapsFolder;
+        config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
+        config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
+        config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+
+        config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
+
+        return config;
     }
 
     private async Task RunTask(Func<Task> task)
@@ -326,6 +324,7 @@ public partial class MainWindow : Window
         var config = _configService.LoadConfig(_app._scriptDirectory);
         _gamePathInput.Text = config.App.SetGamePath;
         _browserFolderInput.Text = config.Desktop.BrowserFolder;
+        _downloadDelayMsInput.Value = config.Downloader.DownloadDelayMs;
         _doubleClickToPlayCheck.IsChecked = config.Desktop.DoubleClickToPlay;
         _enterToPlayCheck.IsChecked = config.Desktop.EnterToPlay;
         _playAfterDownloadCheck.IsChecked = config.Desktop.PlayAfterDownload;
@@ -335,13 +334,15 @@ public partial class MainWindow : Window
     {
         try
         {
-            _configService.SaveConfig(
-                _app._scriptDirectory,
-                _gamePathInput.Text,
-                _browserFolderInput.Text,
-                _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true,
-                _playAfterDownloadCheck.IsChecked ?? false);
+            var config = _configService.LoadConfig(_app._scriptDirectory);
+            config.App.SetGamePath = _gamePathInput.Text;
+            config.Desktop.BrowserFolder = _browserFolderInput.Text;
+            config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
+            config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
+            config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
+            config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+
+            _configService.SaveConfig(_app._scriptDirectory, config);
 
             AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
             RefreshBrowser();

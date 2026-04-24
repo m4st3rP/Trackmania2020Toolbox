@@ -76,7 +76,7 @@ public class ComponentTests : IDisposable
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[100]);
         _fixerMock.Setup(f => f.ProcessFile(It.IsAny<string>(), It.IsAny<Config>())).Returns(true);
 
-        var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "Winter 2024", "--folder", _tempDir });
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "Winter 2024", "--folder", _tempDir }, Config.Default);
 
         // 2. Run
         await _app.RunAsync(config);
@@ -98,13 +98,34 @@ public class ComponentTests : IDisposable
 
         _fixerMock.Setup(f => f.ProcessFile(It.IsAny<string>(), It.IsAny<Config>())).Returns(true);
 
-        var config = new Config(
-            new DownloaderConfig(null, null, null, null, null, null, null),
-            new TmxConfig(null, null, null, null, "name", false, false),
-            new FixerConfig(_tempDir, true, true, true, false),
-            new AppConfig(false, true, false, null, new List<string>()),
-            new DesktopConfig(_tempDir, true, true, false)
-        );
+        var config = new Config
+        {
+            Downloader = new DownloaderConfig(),
+            Tmx = new TmxConfig(),
+            Fixer = new FixerConfig
+            {
+                FolderPath = _tempDir,
+                ExplicitFolder = true,
+                UpdateTitle = true,
+                ConvertPlatformMapType = true,
+                DryRun = false
+            },
+            App = new AppConfig
+            {
+                ForceOverwrite = false,
+                Interactive = true,
+                Play = false,
+                SetGamePath = null,
+                ExtraPaths = new List<string>()
+            },
+            Desktop = new DesktopConfig
+            {
+                BrowserFolder = _tempDir,
+                DoubleClickToPlay = true,
+                EnterToPlay = true,
+                PlayAfterDownload = false
+            }
+        };
 
         var processed = _app.RunBatchFixer(config);
 
