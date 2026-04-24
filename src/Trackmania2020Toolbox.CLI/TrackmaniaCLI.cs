@@ -201,7 +201,16 @@ public static class TrackmaniaCLI
 
         return baseConfig with
         {
-            Downloader = new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
+            Downloader = baseConfig.Downloader with
+            {
+                WeeklyShorts = weeklyShorts,
+                WeeklyGrands = weeklyGrands,
+                Seasonal = seasonal,
+                ClubCampaign = clubCampaign,
+                ToTDDate = totdDate,
+                ExportMedalsPlayerId = exportMedalsPlayerId,
+                ExportMedalsCampaign = exportMedalsCampaign
+            },
             Tmx = new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
             Fixer = new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
             App = new AppConfig(force, interactive, play, setGamePath, extraPaths)

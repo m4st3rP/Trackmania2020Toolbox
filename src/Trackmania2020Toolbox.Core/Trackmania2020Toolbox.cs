@@ -159,11 +159,13 @@ public class RealConfigService : IConfigService
             var doubleClickToPlay = model.ContainsKey("double_click_to_play") ? bool.Parse(model["double_click_to_play"]?.ToString() ?? "true") : true;
             var enterToPlay = model.ContainsKey("enter_to_play") ? bool.Parse(model["enter_to_play"]?.ToString() ?? "true") : true;
             var playAfterDownload = model.ContainsKey("play_after_download") ? bool.Parse(model["play_after_download"]?.ToString() ?? "false") : false;
+            var downloadDelayMs = model.ContainsKey("download_delay_ms") ? int.Parse(model["download_delay_ms"]?.ToString() ?? "1000") : 1000;
 
             var def = Config.Default;
             return def with
             {
                 App = def.App with { SetGamePath = gamePath, Play = playAfterDownload },
+                Downloader = def.Downloader with { DownloadDelayMs = downloadDelayMs },
                 Fixer = def.Fixer with { FolderPath = browserFolder ?? def.Fixer.FolderPath },
                 Desktop = def.Desktop with
                 {
@@ -192,7 +194,8 @@ public class RealConfigService : IConfigService
                 ["browser_folder"] = config.Desktop.BrowserFolder ?? "",
                 ["double_click_to_play"] = config.Desktop.DoubleClickToPlay,
                 ["enter_to_play"] = config.Desktop.EnterToPlay,
-                ["play_after_download"] = config.Desktop.PlayAfterDownload
+                ["play_after_download"] = config.Desktop.PlayAfterDownload,
+                ["download_delay_ms"] = config.Downloader.DownloadDelayMs
             };
             var content = TomlSerializer.Serialize(model, ToolboxConfigContext.Default.TomlTable);
             _fs.WriteAllText(_path, content);
