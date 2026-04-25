@@ -65,7 +65,7 @@ public static class TrackmaniaCLI
         var fs = new RealFileSystem();
         var configService = new RealConfigService(fs);
         var scriptDir = GetScriptDirectory();
-        var baseConfig = configService.LoadConfig(scriptDir);
+        var baseConfig = await configService.LoadConfigAsync(scriptDir);
         var config = ParseArguments(args, baseConfig);
 
         using var api = new TrackmaniaApiWrapper(HttpClient, UserAgent);
