@@ -4,6 +4,7 @@
         xmlns:core="clr-namespace:Trackmania2020Toolbox;assembly=Trackmania2020Toolbox.Core"
         x:Class="Trackmania2020Toolbox.Desktop.MainWindow"
         x:CompileBindings="True"
+        Icon="/Assets/toolbox.png"
         Title="Trackmania 2020 Toolbox"
         Width="900" Height="700">
     <Grid RowDefinitions="*, 200">
@@ -205,6 +206,9 @@
                             <TextBox Name="BrowserFolderInput"/>
                             <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseBrowserFolderBtn"/>
                         </Grid>
+
+                        <TextBlock Text="Download Delay (ms):"/>
+                        <NumericUpDown Name="DownloadDelayMsInput" Minimum="0" Maximum="10000" Increment="100"/>
 
                         <Button Content="Save Settings" Name="SaveSettingsBtn"/>
 

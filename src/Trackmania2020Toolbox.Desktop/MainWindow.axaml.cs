@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     private readonly ToolboxApp _app;
     private readonly IBrowserService _browserService;
     private readonly IConfigService _configService;
+    private readonly IFileSystem _fs;
+    private Config _config;
     private readonly TextBox _logOutput;
     private readonly TextBox _weeklyShortsInput;
     private readonly TextBox _weeklyGrandsInput;
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
     private readonly TextBox _medalsCampaignInput;
     private readonly TextBox _gamePathInput;
     private readonly TextBox _browserFolderInput;
+    private readonly NumericUpDown _downloadDelayMsInput;
     private readonly CheckBox _updateTitleCheck;
     private readonly CheckBox _convertMapTypeCheck;
     private readonly CheckBox _dryRunCheck;
@@ -62,6 +65,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _config = Config.Default;
         InitializeComponent();
 
         _logOutput = this.FindControl<TextBox>("LogOutput")!;
@@ -85,6 +89,7 @@ public partial class MainWindow : Window
         _medalsCampaignInput = this.FindControl<TextBox>("MedalsCampaignInput")!;
         _gamePathInput = this.FindControl<TextBox>("GamePathInput")!;
         _browserFolderInput = this.FindControl<TextBox>("BrowserFolderInput")!;
+        _downloadDelayMsInput = this.FindControl<NumericUpDown>("DownloadDelayMsInput")!;
         _updateTitleCheck = this.FindControl<CheckBox>("UpdateTitleCheck")!;
         _convertMapTypeCheck = this.FindControl<CheckBox>("ConvertMapTypeCheck")!;
         _dryRunCheck = this.FindControl<CheckBox>("DryRunCheck")!;
@@ -100,24 +105,24 @@ public partial class MainWindow : Window
 
         var console = new LogConsole(AppendLog, selectionFunc: SelectItemAsync);
         var api = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
-        var fs = new RealFileSystem();
+        _fs = new RealFileSystem();
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         var dateTime = new RealDateTime();
-        _browserService = new RealBrowserService(fs);
-        _configService = new RealConfigService(fs);
+        _browserService = new RealBrowserService(_fs);
+        _configService = new RealConfigService(_fs);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
             TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Add("User-Agent", TrackmaniaCLI.UserAgent);
 
-        _app = new ToolboxApp(api, fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory(), _configService);
+        _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory(), _configService);
 
         // Load initial settings
-        _fixerFolderInput.Text = _app._defaultMapsFolder;
-        _browserFolderInput.Text = _app._defaultMapsFolder;
-        LoadConfig();
-        _currentBrowserDirectory = _browserFolderInput.Text;
+        _ = LoadConfigAsync();
+        _fixerFolderInput.Text = _config.Fixer.FolderPath;
+        _browserFolderInput.Text = _config.Desktop.BrowserFolder;
+        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
         RefreshBrowser();
 
         // Wire up buttons
@@ -237,30 +242,26 @@ public partial class MainWindow : Window
 
     private Config GetConfig()
     {
-        return new Config(
-            new DownloaderConfig(null, null, null, null, null, null, null),
-            new TmxConfig(null, null, null, null, "name", false, false),
-            new FixerConfig(
-                _fixerFolderInput.Text ?? _app._defaultMapsFolder,
-                true, // Use explicit folder
-                _updateTitleCheck.IsChecked ?? true,
-                _convertMapTypeCheck.IsChecked ?? true,
-                _dryRunCheck.IsChecked ?? false
-            ),
-            new AppConfig(
-                _forceOverwriteCheck.IsChecked ?? false,
-                true, // interactive
-                _playAfterDownloadCheck.IsChecked ?? false,
-                null,
-                new List<string>()
-            ),
-            new DesktopConfig(
-                _browserFolderInput.Text ?? _app._defaultMapsFolder,
-                _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true,
-                _playAfterDownloadCheck.IsChecked ?? false
-            )
-        );
+        var config = _configService.LoadConfig(_app._scriptDirectory);
+
+        config.Fixer.FolderPath = _fixerFolderInput.Text ?? _app._defaultMapsFolder;
+        config.Fixer.ExplicitFolder = true;
+        config.Fixer.UpdateTitle = _updateTitleCheck.IsChecked ?? true;
+        config.Fixer.ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true;
+        config.Fixer.DryRun = _dryRunCheck.IsChecked ?? false;
+
+        config.App.ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false;
+        config.App.Interactive = true;
+        config.App.Play = _playAfterDownloadCheck.IsChecked ?? false;
+
+        config.Desktop.BrowserFolder = _browserFolderInput.Text ?? _app._defaultMapsFolder;
+        config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
+        config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
+        config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+
+        config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
+
+        return config;
     }
 
     private async Task RunTask(Func<Task> task)
@@ -299,7 +300,7 @@ public partial class MainWindow : Window
     {
         // Re-implementing LaunchGame since it's private in ToolboxApp
         var gamePath = _gamePathInput.Text;
-        if (string.IsNullOrEmpty(gamePath) || !File.Exists(gamePath))
+        if (string.IsNullOrEmpty(gamePath) || !_fs.FileExists(gamePath))
         {
             AppendLog("Error: Trackmania.exe path not set or invalid." + Environment.NewLine);
             return;
@@ -321,27 +322,40 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadConfig()
-    {
-        var config = _configService.LoadConfig(_app._scriptDirectory);
-        _gamePathInput.Text = config.App.SetGamePath;
-        _browserFolderInput.Text = config.Desktop.BrowserFolder;
-        _doubleClickToPlayCheck.IsChecked = config.Desktop.DoubleClickToPlay;
-        _enterToPlayCheck.IsChecked = config.Desktop.EnterToPlay;
-        _playAfterDownloadCheck.IsChecked = config.Desktop.PlayAfterDownload;
-    }
-
-    private void SaveConfig()
+    private async Task LoadConfigAsync()
     {
         try
         {
-            _configService.SaveConfig(
-                _app._scriptDirectory,
-                _gamePathInput.Text,
-                _browserFolderInput.Text,
-                _doubleClickToPlayCheck.IsChecked ?? true,
-                _enterToPlayCheck.IsChecked ?? true,
-                _playAfterDownloadCheck.IsChecked ?? false);
+            _config = await _configService.LoadConfigAsync(_app._scriptDirectory);
+        }
+        catch (Exception ex)
+        {
+            _config = Config.Default;
+            AppendLog($"Error loading config: {ex.Message}. Using defaults.{Environment.NewLine}");
+        }
+        _gamePathInput.Text = _config.App.SetGamePath;
+        _browserFolderInput.Text = _config.Desktop.BrowserFolder;
+        _downloadDelayMsInput.Value = _config.Downloader.DownloadDelayMs;
+        _doubleClickToPlayCheck.IsChecked = _config.Desktop.DoubleClickToPlay;
+        _enterToPlayCheck.IsChecked = _config.Desktop.EnterToPlay;
+        _playAfterDownloadCheck.IsChecked = _config.Desktop.PlayAfterDownload;
+        _fixerFolderInput.Text = _config.Fixer.FolderPath;
+        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
+        RefreshBrowser();
+    }
+
+    private async void SaveConfig()
+    {
+        try
+        {
+            _config.App.SetGamePath = _gamePathInput.Text;
+            _config.Desktop.BrowserFolder = _browserFolderInput.Text ?? string.Empty;
+            _config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
+            _config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
+            _config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
+            _config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+
+            await _configService.SaveConfigAsync(_app._scriptDirectory, _config);
 
             AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
             RefreshBrowser();
@@ -354,14 +368,14 @@ public partial class MainWindow : Window
 
     private void RefreshBrowser()
     {
-        if (string.IsNullOrEmpty(_currentBrowserDirectory) || !Directory.Exists(_currentBrowserDirectory))
+        if (string.IsNullOrEmpty(_currentBrowserDirectory) || !_fs.DirectoryExists(_currentBrowserDirectory))
         {
             _currentBrowserDirectory = _browserFolderInput.Text ?? _app._defaultMapsFolder;
         }
 
-        if (!Directory.Exists(_currentBrowserDirectory))
+        if (!_fs.DirectoryExists(_currentBrowserDirectory))
         {
-            try { Directory.CreateDirectory(_currentBrowserDirectory); } catch { return; }
+            try { _fs.CreateDirectory(_currentBrowserDirectory); } catch { return; }
         }
 
         _browserPathDisplay.Text = _currentBrowserDirectory;
@@ -389,7 +403,7 @@ public partial class MainWindow : Window
     private void SetupWatcher()
     {
         _watcher?.Dispose();
-        if (!Directory.Exists(_currentBrowserDirectory)) return;
+        if (!_fs.DirectoryExists(_currentBrowserDirectory)) return;
 
         _watcher = new FileSystemWatcher(_currentBrowserDirectory)
         {
@@ -405,10 +419,10 @@ public partial class MainWindow : Window
 
     private void NavigateUp()
     {
-        var parent = Directory.GetParent(_currentBrowserDirectory);
-        if (parent != null)
+        var parent = Path.GetDirectoryName(_currentBrowserDirectory);
+        if (!string.IsNullOrEmpty(parent))
         {
-            _currentBrowserDirectory = parent.FullName;
+            _currentBrowserDirectory = parent;
             RefreshBrowser();
         }
     }

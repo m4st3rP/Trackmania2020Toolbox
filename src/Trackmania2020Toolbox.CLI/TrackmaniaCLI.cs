@@ -62,147 +62,126 @@ public static class TrackmaniaCLI
             return;
         }
 
-        var config = ParseArguments(args);
+        var fs = new RealFileSystem();
+        var configService = new RealConfigService(fs);
+        var scriptDir = GetScriptDirectory();
+        var baseConfig = await configService.LoadConfigAsync(scriptDir);
+        var config = ParseArguments(args, baseConfig);
 
         using var api = new TrackmaniaApiWrapper(HttpClient, UserAgent);
-        var fs = new RealFileSystem();
         var net = new RealNetworkService(HttpClient);
         var fixer = new RealMapFixer();
         var console = new RealConsole();
         var dateTime = new RealDateTime();
 
-        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, GetScriptDirectory());
+        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, configService);
         await app.RunAsync(config);
     }
 
-    public static Config ParseArguments(string[] args)
+    public static Config ParseArguments(string[] args, Config baseConfig)
     {
-        string? weeklyShorts = null;
-        string? weeklyGrands = null;
-        string? seasonal = null;
-        string? clubCampaign = null;
-        string? totdDate = null;
-        string? exportMedalsPlayerId = null;
-        string? exportMedalsCampaign = null;
-        string? tmxMaps = null;
-        string? tmxPacks = null;
-        string? tmxSearch = null;
-        string? tmxAuthor = null;
-        string tmxSort = "name";
-        bool tmxDesc = false;
-        bool tmxRandom = false;
-        string defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
-        string folder = defaultFolder;
-        bool explicitFolder = false;
-        bool skipTitleUpdate = false;
-        bool skipMapTypeConvert = false;
-        bool dryRun = false;
-        bool force = false;
-        bool interactive = true;
-        bool play = false;
-        string? setGamePath = null;
-        var extraPaths = new List<string>();
+        var config = baseConfig;
+        var dl = config.Downloader;
+        var tmx = config.Tmx;
+        var fixer = config.Fixer;
+        var app = config.App;
 
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i].ToLowerInvariant())
             {
                 case "--weekly-shorts":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) weeklyShorts = args[++i];
-                    else weeklyShorts = "latest";
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) dl.WeeklyShorts = args[++i];
+                    else dl.WeeklyShorts = "latest";
                     break;
                 case "--weekly-grands":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) weeklyGrands = args[++i];
-                    else weeklyGrands = "latest";
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) dl.WeeklyGrands = args[++i];
+                    else dl.WeeklyGrands = "latest";
                     break;
                 case "--seasonal":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) seasonal = args[++i];
-                    else seasonal = "latest";
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) dl.Seasonal = args[++i];
+                    else dl.Seasonal = "latest";
                     break;
                 case "--club-campaign":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) clubCampaign = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) dl.ClubCampaign = args[++i];
                     break;
                 case "--totd":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) totdDate = args[++i];
-                    else totdDate = "latest";
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) dl.ToTDDate = args[++i];
+                    else dl.ToTDDate = "latest";
                     break;
                 case "--export-campaign-medals":
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
                     {
-                        exportMedalsPlayerId = args[++i];
+                        dl.ExportMedalsPlayerId = args[++i];
                         if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
                         {
-                            exportMedalsCampaign = args[++i];
+                            dl.ExportMedalsCampaign = args[++i];
                         }
                     }
                     break;
                 case "--tmx":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxMaps = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxMaps = args[++i];
                     break;
                 case "--tmx-pack":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxPacks = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxPacks = args[++i];
                     break;
                 case "--tmx-search":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxSearch = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxSearch = args[++i];
                     break;
                 case "--tmx-author":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxAuthor = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxAuthor = args[++i];
                     break;
                 case "--tmx-sort":
-                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmxSort = args[++i];
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxSort = args[++i];
                     break;
                 case "--tmx-desc":
-                    tmxDesc = true;
+                    tmx.TmxDesc = true;
                     break;
                 case "--tmx-random":
-                    tmxRandom = true;
+                    tmx.TmxRandom = true;
                     break;
                 case "--folder":
                 case "-f":
                     if (i + 1 < args.Length)
                     {
-                        folder = args[++i];
-                        explicitFolder = true;
+                        fixer.FolderPath = args[++i];
+                        fixer.ExplicitFolder = true;
                     }
                     break;
                 case "--skip-title-update":
-                    skipTitleUpdate = true;
+                    fixer.UpdateTitle = false;
                     break;
                 case "--skip-maptype-convert":
-                    skipMapTypeConvert = true;
+                    fixer.ConvertPlatformMapType = false;
                     break;
                 case "--dry-run":
-                    dryRun = true;
+                    fixer.DryRun = true;
                     break;
                 case "--force":
-                    force = true;
+                    app.ForceOverwrite = true;
                     break;
                 case "--non-interactive":
-                    interactive = false;
+                    app.Interactive = false;
                     break;
                 case "--play":
-                    play = true;
+                    app.Play = true;
                     break;
                 case "--set-game-path":
-                    if (i + 1 < args.Length) setGamePath = args[++i];
+                    if (i + 1 < args.Length) app.SetGamePath = args[++i];
+                    break;
+                case "--download-delay":
+                    if (i + 1 < args.Length && int.TryParse(args[++i], out var delay)) dl.DownloadDelayMs = delay;
                     break;
                 default:
                     if (!args[i].StartsWith("--"))
                     {
-                        extraPaths.Add(args[i]);
+                        app.ExtraPaths.Add(args[i]);
                     }
                     break;
             }
         }
 
-        var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
-        return new Config(
-            new DownloaderConfig(weeklyShorts, weeklyGrands, seasonal, clubCampaign, totdDate, exportMedalsPlayerId, exportMedalsCampaign),
-            new TmxConfig(tmxMaps, tmxPacks, tmxSearch, tmxAuthor, tmxSort, tmxDesc, tmxRandom),
-            new FixerConfig(folder, explicitFolder, !skipTitleUpdate, !skipMapTypeConvert, dryRun),
-            new AppConfig(force, interactive, play, setGamePath, extraPaths),
-            new DesktopConfig(defaultMapsFolder, true, true, false)
-        );
+        return config;
     }
 
     public static void PrintUsage()
@@ -223,6 +202,7 @@ public static class TrackmaniaCLI
         Console.WriteLine("  --tmx-sort <sort>          Sort search results (name, author, awards, downloads). Default: name.");
         Console.WriteLine("  --tmx-desc                 Sort search results in descending order.");
         Console.WriteLine("  --tmx-random               Download a random map from TMX.");
+        Console.WriteLine("  --download-delay <ms>      Delay between API requests (default: 1000).");
         Console.WriteLine("  --export-campaign-medals <PlayerID> [campaign]");
         Console.WriteLine("                             Export official campaign medals to medals.csv.");
         // We could use constants here, but they are not easily available yet.
