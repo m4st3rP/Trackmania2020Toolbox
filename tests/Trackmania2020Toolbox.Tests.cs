@@ -558,8 +558,8 @@ public class ToolboxTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--force" }, Config.Default);
-        IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps =
-            new (string, string?, string?, string?)[] { (inputName, null, "http://url", null) };
+        IEnumerable<MapDownloadRecord> maps =
+            new MapDownloadRecord[] { new MapDownloadRecord(inputName, null, "http://url", null) };
 
         await _app.DownloadAndFixMaps(maps, "dir", config);
 

@@ -31,6 +31,8 @@ public interface ITrackOfTheDayCollection { int Year { get; } int Month { get; }
 public interface ILeaderboard { IEnumerable<IRecord> Tops { get; } }
 public interface IRecord { TimeInt32 Time { get; } }
 
+public record MapDownloadRecord(string Name, string? FileName, string? FileUrl, string? Prefix);
+
 public interface ITmxMap { int Id { get; } string Name { get; } string AuthorName { get; } int AwardCount { get; } int DownloadCount { get; } }
 public interface ITmxMapPack { int Id { get; } string Name { get; } }
 
@@ -554,8 +556,11 @@ public class ToolboxApp
     private readonly IConsole _console;
     private readonly IDateTime _dateTime;
     private readonly IConfigService _configService;
-    public readonly string _scriptDirectory;
-    public readonly string _defaultMapsFolder;
+    private readonly string _scriptDirectory;
+    private readonly string _defaultMapsFolder;
+
+    public string ScriptDirectory => _scriptDirectory;
+    public string DefaultMapsFolder => _defaultMapsFolder;
 
     public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
     {
@@ -685,7 +690,7 @@ public class ToolboxApp
         return config.App.SetGamePath;
     }
 
-    private void LaunchGame(List<string> mapPaths)
+    public void LaunchGame(List<string> mapPaths)
     {
         if (mapPaths.Count == 0)
         {
@@ -832,7 +837,7 @@ public class ToolboxApp
             var weekIdStr = num.ToString();
             var downloadDir = downloadDirFunc(weekIdStr);
             downloadedPaths.AddRange(await DownloadAndFixMaps(
-                mapsToDownload.Select(m => (m.map.Name, (string?)m.map.FileName, (string?)m.map.FileUrl, (string?)prefixFunc(m.map, m.index, weekIdStr))),
+                mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, prefixFunc(m.map, m.index, weekIdStr))),
                 downloadDir, config));
         }
         return downloadedPaths;
@@ -910,7 +915,7 @@ public class ToolboxApp
 
             var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
-            return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+            return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
         }
 
         foreach (var campaignRef in campaignRefs)
@@ -942,7 +947,7 @@ public class ToolboxApp
             var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             downloadedPaths.AddRange(await DownloadAndFixMaps(
-                mapsToDownload.Select(m => (m.map.Name, (string?)m.map.FileName, (string?)m.map.FileUrl, (string?)$"{(m.index + 1):D2} - ")),
+                mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, $"{(m.index + 1):D2} - ")),
                 downloadDir, config));
         }
 
@@ -1061,7 +1066,7 @@ public class ToolboxApp
         var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Clubs", clubPart, campaignPart);
-        return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)$"{(i + 1):D2} - ")), downloadDir, config);
+        return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
     }
 
     public async Task<List<string>> HandleTmxMaps(string input, Config config)
@@ -1071,14 +1076,14 @@ public class ToolboxApp
         if (!ids.Any()) return downloadedPaths;
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
-        var mapsToDownload = new List<(string Name, string? FileName, string? FileUrl, string? Prefix)>();
+        var mapsToDownload = new List<MapDownloadRecord>();
 
         foreach (var id in ids)
         {
             var map = await _api.GetTmxMapAsync(id);
             if (map != null)
             {
-                mapsToDownload.Add((map.Name, null, _api.GetTmxMapUrl(map.Id), null));
+                mapsToDownload.Add(new MapDownloadRecord(map.Name, null, _api.GetTmxMapUrl(map.Id), null));
             }
             else
             {
@@ -1086,7 +1091,7 @@ public class ToolboxApp
             }
         }
 
-        return await DownloadAndFixMaps(mapsToDownload.Select(m => (m.Name, (string?)m.FileName, (string?)m.FileUrl, (string?)m.Prefix)), downloadDir, config);
+        return await DownloadAndFixMaps(mapsToDownload, downloadDir, config);
     }
 
     public async Task<List<string>> HandleTmxPacks(string input, Config config)
@@ -1108,7 +1113,7 @@ public class ToolboxApp
             var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
             var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", TextFormatter.Deformat(pack.Name));
 
-            downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => (m.Name, (string?)null, (string?)_api.GetTmxMapUrl(m.Id), (string?)$"{(i + 1):D2} - ")), downloadDir, config));
+            downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => new MapDownloadRecord(m.Name, null, _api.GetTmxMapUrl(m.Id), $"{(i + 1):D2} - ")), downloadDir, config));
         }
 
         return downloadedPaths;
@@ -1224,7 +1229,7 @@ public class ToolboxApp
             if (!totdDays.Any()) continue;
 
             var downloadDir = Path.Combine(_defaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
-            downloadedPaths.AddRange(await DownloadAndFixMaps(totdDays.Select(d => (d.Map!.Name, (string?)d.Map.FileName, (string?)d.Map.FileUrl, (string?)$"{d.MonthDay:D2} - ")), downloadDir, config));
+            downloadedPaths.AddRange(await DownloadAndFixMaps(totdDays.Select(d => new MapDownloadRecord(d.Map!.Name, d.Map.FileName, d.Map.FileUrl, $"{d.MonthDay:D2} - ")), downloadDir, config));
         }
 
         return downloadedPaths;
@@ -1314,7 +1319,7 @@ public class ToolboxApp
         return null;
     }
 
-    public async Task<List<string>> DownloadAndFixMaps(IEnumerable<(string Name, string? FileName, string? FileUrl, string? Prefix)> maps, string downloadDir, Config config)
+    public async Task<List<string>> DownloadAndFixMaps(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config)
     {
         if (!_fs.DirectoryExists(downloadDir)) _fs.CreateDirectory(downloadDir);
 
@@ -1324,8 +1329,13 @@ public class ToolboxApp
 
         for (int i = 0; i < mapList.Count; i++)
         {
-            var (name, rawFileName, url, prefix) = mapList[i];
-            if (string.IsNullOrEmpty(url)) continue;
+            var map = mapList[i];
+            if (string.IsNullOrEmpty(map.FileUrl)) continue;
+
+            var name = map.Name;
+            var rawFileName = map.FileName;
+            var url = map.FileUrl;
+            var prefix = map.Prefix;
 
             var fileName = (rawFileName ?? name).Trim();
             var deformattedName = TextFormatter.Deformat(name);
