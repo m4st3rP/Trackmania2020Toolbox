@@ -123,10 +123,6 @@ public partial class MainWindow : Window
 
         // Load initial settings
         _ = LoadConfigAsync();
-        _fixerFolderInput.Text = _config.Fixer.FolderPath;
-        _browserFolderInput.Text = _config.Desktop.BrowserFolder;
-        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
-        RefreshBrowser();
 
         // Wire up buttons
         this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShorts(_weeklyShortsInput.Text ?? "latest", GetConfig()));
@@ -253,30 +249,29 @@ public partial class MainWindow : Window
 
     private Config GetConfig()
     {
-        var config = _configService.LoadConfig(_app._scriptDirectory);
+        _config.Fixer.FolderPath = _fixerFolderInput.Text ?? _app.DefaultMapsFolder;
+        _config.Fixer.ExplicitFolder = true;
+        _config.Fixer.UpdateTitle = _updateTitleCheck.IsChecked ?? true;
+        _config.Fixer.ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true;
+        _config.Fixer.DryRun = _dryRunCheck.IsChecked ?? false;
 
-        config.Fixer.FolderPath = _fixerFolderInput.Text ?? _app._defaultMapsFolder;
-        config.Fixer.ExplicitFolder = true;
-        config.Fixer.UpdateTitle = _updateTitleCheck.IsChecked ?? true;
-        config.Fixer.ConvertPlatformMapType = _convertMapTypeCheck.IsChecked ?? true;
-        config.Fixer.DryRun = _dryRunCheck.IsChecked ?? false;
+        _config.App.ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false;
+        _config.App.Interactive = true;
+        _config.App.Play = _playAfterDownloadCheck.IsChecked ?? false;
+        _config.App.SetGamePath = _gamePathInput.Text;
 
-        config.App.ForceOverwrite = _forceOverwriteCheck.IsChecked ?? false;
-        config.App.Interactive = true;
-        config.App.Play = _playAfterDownloadCheck.IsChecked ?? false;
+        _config.Desktop.BrowserFolder = _browserFolderInput.Text ?? _app.DefaultMapsFolder;
+        _config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
+        _config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
+        _config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+        _config.Desktop.SaveLastFolder = _saveLastFolderCheck.IsChecked ?? false;
+        _config.Desktop.LastFolder = _currentBrowserDirectory;
+        _config.Desktop.SaveLastSort = _saveLastSortCheck.IsChecked ?? false;
+        _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
 
-        config.Desktop.BrowserFolder = _browserFolderInput.Text ?? _app._defaultMapsFolder;
-        config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
-        config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
-        config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
-        config.Desktop.SaveLastFolder = _saveLastFolderCheck.IsChecked ?? false;
-        config.Desktop.LastFolder = _currentBrowserDirectory;
-        config.Desktop.SaveLastSort = _saveLastSortCheck.IsChecked ?? false;
-        config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
+        _config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
 
-        config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
-
-        return config;
+        return _config;
     }
 
     private async Task RunTask(Func<Task> task)
@@ -301,7 +296,7 @@ public partial class MainWindow : Window
                 RefreshBrowser();
                 if (_playAfterDownloadCheck.IsChecked ?? false)
                 {
-                    LaunchGame(paths);
+                    _app.LaunchGame(paths);
                 }
             }
         }
@@ -311,35 +306,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LaunchGame(List<string> paths)
-    {
-        // Re-implementing LaunchGame since it's private in ToolboxApp
-        var gamePath = _gamePathInput.Text;
-        if (string.IsNullOrEmpty(gamePath) || !_fs.FileExists(gamePath))
-        {
-            AppendLog("Error: Trackmania.exe path not set or invalid." + Environment.NewLine);
-            return;
-        }
-
-        var sortedMaps = paths.Distinct().OrderBy(p => p).ToList();
-        if (sortedMaps.Count == 0) return;
-
-        var firstMap = sortedMaps.First();
-        var arguments = $"\"{Path.GetFullPath(firstMap)}\"";
-        try
-        {
-            AppendLog($"Launching Trackmania with {Path.GetFileName(firstMap)}..." + Environment.NewLine);
-            System.Diagnostics.Process.Start(gamePath, arguments);
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"Error launching game: {ex.Message}" + Environment.NewLine);
-        }
-    }
-
     private async Task LoadConfigAsync()
     {
-        _config = await _configService.LoadConfigAsync(_app._scriptDirectory);
+        _config = await _configService.LoadConfigAsync(_app.ScriptDirectory);
         _gamePathInput.Text = _config.App.SetGamePath;
         _browserFolderInput.Text = _config.Desktop.BrowserFolder;
         _downloadDelayMsInput.Value = _config.Downloader.DownloadDelayMs;
@@ -371,20 +340,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            _config.App.SetGamePath = _gamePathInput.Text;
-            _config.Desktop.BrowserFolder = _browserFolderInput.Text ?? string.Empty;
-            _config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
-            _config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
-            _config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
-            _config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
-            _config.Desktop.SaveLastFolder = _saveLastFolderCheck.IsChecked ?? false;
-            _config.Desktop.LastFolder = _currentBrowserDirectory;
-            _config.Desktop.SaveLastSort = _saveLastSortCheck.IsChecked ?? false;
-            _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
+            _config = GetConfig();
+            await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
 
-            await _configService.SaveConfigAsync(_app._scriptDirectory, _config);
-
-            AppendLog($"Settings saved to: {Path.Combine(_app._scriptDirectory, "config.toml")}{Environment.NewLine}");
+            AppendLog($"Settings saved to: {Path.Combine(_app.ScriptDirectory, "config.toml")}{Environment.NewLine}");
             RefreshBrowser();
         }
         catch (Exception ex)
@@ -398,7 +357,7 @@ public partial class MainWindow : Window
         try
         {
             _config = Config.Default;
-            await _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+            await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
             await LoadConfigAsync();
             AppendLog($"Settings reset to defaults and saved.{Environment.NewLine}");
         }
@@ -412,7 +371,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_currentBrowserDirectory) || !_fs.DirectoryExists(_currentBrowserDirectory))
         {
-            _currentBrowserDirectory = _browserFolderInput.Text ?? _app._defaultMapsFolder;
+            _currentBrowserDirectory = _browserFolderInput.Text ?? _app.DefaultMapsFolder;
         }
 
         if (!_fs.DirectoryExists(_currentBrowserDirectory))
@@ -423,7 +382,7 @@ public partial class MainWindow : Window
         if (_saveLastFolderCheck != null && _saveLastFolderCheck.IsChecked == true)
         {
             _config.Desktop.LastFolder = _currentBrowserDirectory;
-            _ = _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+            _ = _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
         }
 
         _browserPathDisplay.Text = _currentBrowserDirectory;
@@ -436,7 +395,7 @@ public partial class MainWindow : Window
             if (_saveLastSortCheck != null && _saveLastSortCheck.IsChecked == true)
             {
                 _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
-                _ = _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+                _ = _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
             }
 
             bool desc = _browserSortCombo.SelectedIndex == 1;
@@ -492,7 +451,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                LaunchGame(new List<string> { item.FullPath });
+                _app.LaunchGame(new List<string> { item.FullPath });
             }
         }
     }
@@ -501,7 +460,7 @@ public partial class MainWindow : Window
     {
         if (_browserList.SelectedItem is BrowserItem item && !item.IsDirectory)
         {
-            LaunchGame(new List<string> { item.FullPath });
+            _app.LaunchGame(new List<string> { item.FullPath });
         }
     }
 

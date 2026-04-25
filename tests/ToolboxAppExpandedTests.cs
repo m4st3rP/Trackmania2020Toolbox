@@ -234,4 +234,25 @@ public class ToolboxAppExpandedTests
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Could not find seasonal campaign matching 'NotFound'"))), Times.Once);
     }
+
+    [Fact]
+    public async Task DownloadAndFixMaps_ShouldProcessMapDownloadRecords()
+    {
+        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[5]);
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
+
+        var maps = new List<MapDownloadRecord>
+        {
+            new MapDownloadRecord("Map A", "FileA", "http://a", "P1-"),
+            new MapDownloadRecord("Map B", null, "http://b", null)
+        };
+
+        var config = Config.Default;
+        var result = await _app.DownloadAndFixMaps(maps, "/test/download", config);
+
+        Assert.Equal(2, result.Count);
+        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("P1-FileA")), It.IsAny<byte[]>()), Times.Once);
+        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Map B")), It.IsAny<byte[]>()), Times.Once);
+    }
 }
