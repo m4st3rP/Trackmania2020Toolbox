@@ -152,4 +152,36 @@ public class ConfigServiceTests
         Assert.NotNull(config);
         Assert.True(config.Desktop.DoubleClickToPlay); // Default
     }
+
+    [Fact]
+    public async Task LoadConfigAsync_ShouldHandlePartialFileGracefully()
+    {
+        // Missing [Desktop] and [Downloader] sections
+        var toml = "[App]\nSetGamePath = \"/path/tm.exe\"";
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
+        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync(toml);
+
+        var config = await _service.LoadConfigAsync("/test");
+
+        Assert.Equal("/path/tm.exe", config.App.SetGamePath);
+        Assert.NotNull(config.Desktop);
+        Assert.True(config.Desktop.DoubleClickToPlay); // Default from constructor
+        Assert.Equal(1000, config.Downloader.DownloadDelayMs); // Default from constructor
+    }
+
+    [Fact]
+    public async Task SaveConfigAsync_ShouldPersistDownloadDelay()
+    {
+        string capturedToml = "";
+        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
+               .Returns(Task.CompletedTask)
+               .Callback<string, string>((path, content) => capturedToml = content);
+
+        var config = Config.Default;
+        config.Downloader.DownloadDelayMs = 500;
+
+        await _service.SaveConfigAsync("/test", config);
+
+        Assert.Contains("DownloadDelayMs = 500", capturedToml);
+    }
 }
