@@ -62,6 +62,9 @@ public interface IFileSystem
     bool FileExists(string path);
     Task WriteAllBytesAsync(string path, byte[] bytes);
     void WriteAllText(string path, string contents);
+    Task WriteAllTextAsync(string path, string contents);
+    string ReadAllText(string path);
+    Task<string> ReadAllTextAsync(string path);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
@@ -100,8 +103,9 @@ public interface IBrowserService
 
 public interface IConfigService
 {
+    Task<Config> LoadConfigAsync(string scriptDirectory);
+    Task SaveConfigAsync(string scriptDirectory, Config config);
     Config LoadConfig(string scriptDirectory);
-    void SaveConfig(string scriptDirectory, Config config);
 }
 
 [TomlSerializable(typeof(Config))]
@@ -116,6 +120,31 @@ public class RealConfigService : IConfigService
         _fs = fs;
     }
 
+    public async Task<Config> LoadConfigAsync(string scriptDirectory)
+    {
+        var configPath = Path.Combine(scriptDirectory, "config.toml");
+        if (_fs.FileExists(configPath))
+        {
+            try
+            {
+                var content = await _fs.ReadAllTextAsync(configPath);
+                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                if (config != null) return config;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+                Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                }
+            }
+        }
+
+        return Config.Default;
+    }
+
     public Config LoadConfig(string scriptDirectory)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
@@ -123,7 +152,7 @@ public class RealConfigService : IConfigService
         {
             try
             {
-                var content = string.Join("\n", _fs.ReadAllLines(configPath));
+                var content = _fs.ReadAllText(configPath);
                 var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
                 if (config != null) return config;
             }
@@ -136,11 +165,11 @@ public class RealConfigService : IConfigService
         return Config.Default;
     }
 
-    public void SaveConfig(string scriptDirectory, Config config)
+    public async Task SaveConfigAsync(string scriptDirectory, Config config)
     {
         var configPath = Path.Combine(scriptDirectory, "config.toml");
         var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
-        _fs.WriteAllText(configPath, content);
+        await _fs.WriteAllTextAsync(configPath, content);
     }
 }
 
@@ -450,6 +479,9 @@ public class RealFileSystem : IFileSystem
     public bool FileExists(string path) => File.Exists(path);
     public Task WriteAllBytesAsync(string path, byte[] bytes) => File.WriteAllBytesAsync(path, bytes);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
+    public Task WriteAllTextAsync(string path, string contents) => File.WriteAllTextAsync(path, contents);
+    public string ReadAllText(string path) => File.ReadAllText(path);
+    public Task<string> ReadAllTextAsync(string path) => File.ReadAllTextAsync(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
@@ -543,7 +575,7 @@ public class ToolboxApp
 
         if (appCfg.SetGamePath != null)
         {
-            SaveGamePath(appCfg.SetGamePath);
+            await SaveGamePathAsync(appCfg.SetGamePath);
             if (!appCfg.Play && dlCfg.WeeklyShorts == null && dlCfg.WeeklyGrands == null &&
                 dlCfg.Seasonal == null && dlCfg.ClubCampaign == null && dlCfg.ToTDDate == null &&
                 dlCfg.ExportMedalsPlayerId == null && !fixerCfg.ExplicitFolder && appCfg.ExtraPaths.Count == 0)
@@ -628,13 +660,13 @@ public class ToolboxApp
         }
     }
 
-    private void SaveGamePath(string path)
+    private async Task SaveGamePathAsync(string path)
     {
         try
         {
-            var config = _configService.LoadConfig(_scriptDirectory);
+            var config = await _configService.LoadConfigAsync(_scriptDirectory);
             config.App.SetGamePath = path;
-            _configService.SaveConfig(_scriptDirectory, config);
+            await _configService.SaveConfigAsync(_scriptDirectory, config);
             _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)

@@ -91,10 +91,10 @@ public class ConfigServiceTests
     }
 
     [Fact]
-    public void LoadConfig_ShouldReturnDefaults_WhenFileNotFound()
+    public async Task LoadConfigAsync_ShouldReturnDefaults_WhenFileNotFound()
     {
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
-        var config = _service.LoadConfig("/test");
+        var config = await _service.LoadConfigAsync("/test");
 
         Assert.NotNull(config);
         Assert.Null(config.App.SetGamePath);
@@ -102,13 +102,13 @@ public class ConfigServiceTests
     }
 
     [Fact]
-    public void LoadConfig_ShouldLoadCorrectValues()
+    public async Task LoadConfigAsync_ShouldLoadCorrectValues()
     {
         var toml = "[App]\nSetGamePath = \"/path/tm.exe\"\n[Desktop]\nBrowserFolder = \"/maps\"\nDoubleClickToPlay = false\nEnterToPlay = false\nPlayAfterDownload = true";
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
-        _fsMock.Setup(f => f.ReadAllLines(It.IsAny<string>())).Returns(toml.Split('\n'));
+        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync(toml);
 
-        var config = _service.LoadConfig("/test");
+        var config = await _service.LoadConfigAsync("/test");
 
         Assert.Equal("/path/tm.exe", config.App.SetGamePath);
         Assert.Equal("/maps", config.Desktop.BrowserFolder);
@@ -118,10 +118,11 @@ public class ConfigServiceTests
     }
 
     [Fact]
-    public void SaveConfig_ShouldWriteCorrectToml()
+    public async Task SaveConfigAsync_ShouldWriteCorrectToml()
     {
         string capturedToml = "";
-        _fsMock.Setup(f => f.WriteAllText(It.IsAny<string>(), It.IsAny<string>()))
+        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
+               .Returns(Task.CompletedTask)
                .Callback<string, string>((path, content) => capturedToml = content);
 
         var config = Config.Default;
@@ -131,7 +132,7 @@ public class ConfigServiceTests
         config.Desktop.EnterToPlay = false;
         config.Desktop.PlayAfterDownload = true;
 
-        _service.SaveConfig("/test", config);
+        await _service.SaveConfigAsync("/test", config);
 
         Assert.Contains("SetGamePath = \"/path/tm.exe\"", capturedToml);
         Assert.Contains("BrowserFolder = \"/maps\"", capturedToml);
@@ -141,12 +142,12 @@ public class ConfigServiceTests
     }
 
     [Fact]
-    public void LoadConfig_ShouldHandleCorruptedFileGracefully()
+    public async Task LoadConfigAsync_ShouldHandleCorruptedFileGracefully()
     {
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
-        _fsMock.Setup(f => f.ReadAllLines(It.IsAny<string>())).Returns(new[] { "invalid toml content" });
+        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync("invalid toml content");
 
-        var config = _service.LoadConfig("/test");
+        var config = await _service.LoadConfigAsync("/test");
 
         Assert.NotNull(config);
         Assert.True(config.Desktop.DoubleClickToPlay); // Default
