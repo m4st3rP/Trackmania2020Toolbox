@@ -340,7 +340,7 @@ public partial class MainWindow : Window
         try
         {
             _config.App.SetGamePath = _gamePathInput.Text;
-            _config.Desktop.BrowserFolder = _browserFolderInput.Text;
+            _config.Desktop.BrowserFolder = _browserFolderInput.Text ?? string.Empty;
             _config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
             _config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
             _config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
