@@ -270,6 +270,10 @@ public class DesktopConfig
     public bool DoubleClickToPlay { get; set; } = true;
     public bool EnterToPlay { get; set; } = true;
     public bool PlayAfterDownload { get; set; }
+    public bool SaveLastFolder { get; set; }
+    public string LastFolder { get; set; } = "";
+    public bool SaveLastSort { get; set; }
+    public int LastSort { get; set; }
 }
 
 public class Config
