@@ -55,6 +55,8 @@ public partial class MainWindow : Window
     private readonly CheckBox _playAfterDownloadCheck;
     private readonly CheckBox _doubleClickToPlayCheck;
     private readonly CheckBox _enterToPlayCheck;
+    private readonly CheckBox _saveLastFolderCheck;
+    private readonly CheckBox _saveLastSortCheck;
 
     private readonly ListBox _browserList;
     private readonly TextBox _browserPathDisplay;
@@ -96,6 +98,8 @@ public partial class MainWindow : Window
         _playAfterDownloadCheck = this.FindControl<CheckBox>("PlayAfterDownloadCheck")!;
         _doubleClickToPlayCheck = this.FindControl<CheckBox>("DoubleClickToPlayCheck")!;
         _enterToPlayCheck = this.FindControl<CheckBox>("EnterToPlayCheck")!;
+        _saveLastFolderCheck = this.FindControl<CheckBox>("SaveLastFolderCheck")!;
+        _saveLastSortCheck = this.FindControl<CheckBox>("SaveLastSortCheck")!;
 
         _browserList = this.FindControl<ListBox>("BrowserList")!;
         _browserPathDisplay = this.FindControl<TextBox>("BrowserPathDisplay")!;
@@ -147,6 +151,14 @@ public partial class MainWindow : Window
         };
         this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedals(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig()));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();
+        this.FindControl<Button>("ResetSettingsBtn")!.Click += async (_, _) =>
+        {
+            var choice = await SelectItemAsync("Reset All Settings?", new[] { "Yes, reset everything", "No, keep my settings" });
+            if (choice == 1) // "Yes, reset everything" is index 1 because SelectItemAsync returns 1-based index (0 is cancel)
+            {
+                await ResetConfigAsync();
+            }
+        };
         this.FindControl<Button>("BrowseFixerBtn")!.Click += async (_, _) =>
         {
             var result = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions
@@ -257,6 +269,10 @@ public partial class MainWindow : Window
         config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
         config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
         config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+        config.Desktop.SaveLastFolder = _saveLastFolderCheck.IsChecked ?? false;
+        config.Desktop.LastFolder = _currentBrowserDirectory;
+        config.Desktop.SaveLastSort = _saveLastSortCheck.IsChecked ?? false;
+        config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
 
         config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
 
@@ -330,8 +346,24 @@ public partial class MainWindow : Window
         _doubleClickToPlayCheck.IsChecked = _config.Desktop.DoubleClickToPlay;
         _enterToPlayCheck.IsChecked = _config.Desktop.EnterToPlay;
         _playAfterDownloadCheck.IsChecked = _config.Desktop.PlayAfterDownload;
+        _saveLastFolderCheck.IsChecked = _config.Desktop.SaveLastFolder;
+        _saveLastSortCheck.IsChecked = _config.Desktop.SaveLastSort;
         _fixerFolderInput.Text = _config.Fixer.FolderPath;
-        _currentBrowserDirectory = _config.Desktop.BrowserFolder;
+
+        if (_config.Desktop.SaveLastFolder && !string.IsNullOrEmpty(_config.Desktop.LastFolder) && _fs.DirectoryExists(_config.Desktop.LastFolder))
+        {
+            _currentBrowserDirectory = _config.Desktop.LastFolder;
+        }
+        else
+        {
+            _currentBrowserDirectory = _config.Desktop.BrowserFolder;
+        }
+
+        if (_config.Desktop.SaveLastSort)
+        {
+            _browserSortCombo.SelectedIndex = _config.Desktop.LastSort;
+        }
+
         RefreshBrowser();
     }
 
@@ -345,6 +377,10 @@ public partial class MainWindow : Window
             _config.Desktop.DoubleClickToPlay = _doubleClickToPlayCheck.IsChecked ?? true;
             _config.Desktop.EnterToPlay = _enterToPlayCheck.IsChecked ?? true;
             _config.Desktop.PlayAfterDownload = _playAfterDownloadCheck.IsChecked ?? false;
+            _config.Desktop.SaveLastFolder = _saveLastFolderCheck.IsChecked ?? false;
+            _config.Desktop.LastFolder = _currentBrowserDirectory;
+            _config.Desktop.SaveLastSort = _saveLastSortCheck.IsChecked ?? false;
+            _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
 
             await _configService.SaveConfigAsync(_app._scriptDirectory, _config);
 
@@ -354,6 +390,21 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppendLog($"Error saving config: {ex.Message}{Environment.NewLine}");
+        }
+    }
+
+    private async Task ResetConfigAsync()
+    {
+        try
+        {
+            _config = Config.Default;
+            await _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+            await LoadConfigAsync();
+            AppendLog($"Settings reset to defaults and saved.{Environment.NewLine}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Error resetting config: {ex.Message}{Environment.NewLine}");
         }
     }
 
@@ -369,6 +420,12 @@ public partial class MainWindow : Window
             try { _fs.CreateDirectory(_currentBrowserDirectory); } catch { return; }
         }
 
+        if (_saveLastFolderCheck != null && _saveLastFolderCheck.IsChecked == true)
+        {
+            _config.Desktop.LastFolder = _currentBrowserDirectory;
+            _ = _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+        }
+
         _browserPathDisplay.Text = _currentBrowserDirectory;
         _browserItems.Clear();
 
@@ -376,6 +433,12 @@ public partial class MainWindow : Window
 
         try
         {
+            if (_saveLastSortCheck != null && _saveLastSortCheck.IsChecked == true)
+            {
+                _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
+                _ = _configService.SaveConfigAsync(_app._scriptDirectory, _config);
+            }
+
             bool desc = _browserSortCombo.SelectedIndex == 1;
             var items = _browserService.GetBrowserItems(_currentBrowserDirectory, filter, desc);
             foreach (var item in items)
