@@ -4,6 +4,7 @@
         xmlns:core="clr-namespace:Trackmania2020Toolbox;assembly=Trackmania2020Toolbox.Core"
         x:Class="Trackmania2020Toolbox.Desktop.MainWindow"
         x:CompileBindings="True"
+        Icon="/Assets/toolbox.svg"
         Title="Trackmania 2020 Toolbox"
         Width="900" Height="700">
     <Grid RowDefinitions="*, 200">
