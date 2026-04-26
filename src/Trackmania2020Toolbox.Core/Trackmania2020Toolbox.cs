@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using Tomlyn;
 using Tomlyn.Model;
 using Tomlyn.Serialization;
@@ -8,6 +9,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using GBX.NET;
@@ -188,7 +190,7 @@ public class RealBrowserService : IBrowserService
     {
         if (!_fs.DirectoryExists(directory)) return Enumerable.Empty<BrowserItem>();
 
-        var items = new List<BrowserItem>();
+        List<BrowserItem> items = [];
 
         var dirs = _fs.GetDirectories(directory)
             .Select(d => new { Path = d, Name = Path.GetFileName(d) });
@@ -503,7 +505,10 @@ public class RealNetworkService : INetworkService
 
 public class RealMapFixer : IMapFixer
 {
-    private const string LegacyTitleId = "OrbitalDev@falguiere";
+    public const string LegacyTitleId = "OrbitalDev@falguiere";
+    public const string TargetTitleId = "TMStadium";
+    public const string LegacyMapType = "TrackMania\\TM_Platform";
+    public const string TargetMapType = "TrackMania\\TM_Race";
 
     public bool ProcessFile(string filePath, Config cfg)
     {
@@ -516,13 +521,13 @@ public class RealMapFixer : IMapFixer
 
         if (fixerCfg.UpdateTitle && map.TitleId == LegacyTitleId)
         {
-            map.TitleId = "TMStadium";
+            map.TitleId = TargetTitleId;
             changed = true;
         }
 
-        if (fixerCfg.ConvertPlatformMapType && map.MapType == "TrackMania\\TM_Platform")
+        if (fixerCfg.ConvertPlatformMapType && map.MapType == LegacyMapType)
         {
-            map.MapType = "TrackMania\\TM_Race";
+            map.MapType = TargetMapType;
             changed = true;
         }
 
@@ -591,7 +596,7 @@ public class ToolboxApp
                 return;
         }
 
-        var mapPaths = new List<string>();
+        List<string> mapPaths = [];
         bool downloadActionTaken = false;
 
         if (dlCfg.WeeklyShorts != null)
@@ -758,7 +763,7 @@ public class ToolboxApp
         Func<string, string> downloadDirFunc,
         Func<IMap, int, string, string> prefixFunc)
     {
-        var downloadedPaths = new List<string>();
+        List<string> downloadedPaths = [];
         _console.WriteLine($"Fetching available {displayName} campaigns...");
         var allCampaigns = await FetchAllCampaigns(fetchAllFunc);
 
@@ -774,7 +779,7 @@ public class ToolboxApp
 
         if (!campaignWithNums.Any()) return downloadedPaths;
 
-        var ranges = new List<(MapRef Start, MapRef End)>();
+        List<(MapRef Start, MapRef End)> ranges = [];
         if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
             var latestNum = campaignWithNums.Max(x => x.Num);
@@ -821,7 +826,7 @@ public class ToolboxApp
             if (fullCampaign?.Playlist == null) continue;
 
             var playlist = fullCampaign.Playlist.ToList();
-            var mapsToDownload = new List<(IMap map, int index)>();
+            List<(IMap map, int index)> mapsToDownload = [];
 
             for (int i = 0; i < playlist.Count; i++)
             {
@@ -853,7 +858,7 @@ public class ToolboxApp
 
     public async Task<List<string>> HandleSeasonal(string input, Config config)
     {
-        var downloadedPaths = new List<string>();
+        List<string> downloadedPaths = [];
         _console.WriteLine("Fetching available Seasonal campaigns...");
         var allCampaigns = await FetchAllCampaigns(p => _api.GetSeasonalCampaignsAsync(p));
 
@@ -863,7 +868,7 @@ public class ToolboxApp
             .OrderBy(x => x.Ref)
             .ToList();
 
-        var ranges = new List<(SeasonalRef Start, SeasonalRef End)>();
+        List<(SeasonalRef Start, SeasonalRef End)> ranges = [];
         if (input.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
             if (campaignRefs.Any())
@@ -913,7 +918,7 @@ public class ToolboxApp
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) return downloadedPaths;
 
-            var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
+            var seasonalFolderName = SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
         }
@@ -931,7 +936,7 @@ public class ToolboxApp
             if (fullCampaign?.Playlist == null) continue;
 
             var playlist = fullCampaign.Playlist.ToList();
-            var mapsToDownload = new List<(IMap map, int index)>();
+            List<(IMap map, int index)> mapsToDownload = [];
 
             for (int i = 0; i < playlist.Count; i++)
             {
@@ -944,7 +949,7 @@ public class ToolboxApp
 
             if (!mapsToDownload.Any()) continue;
 
-            var seasonalFolderName = FormatSeasonalFolderName(campaignItem.Name);
+            var seasonalFolderName = SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             downloadedPaths.AddRange(await DownloadAndFixMaps(
                 mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, $"{(m.index + 1):D2} - ")),
@@ -1015,10 +1020,10 @@ public class ToolboxApp
             if (!clubCampaigns.Any())
             {
                 _console.WriteLine($"No campaigns found for Club ID {clubId} (searched all pages).");
-                return new List<string>();
+                return [];
             }
 
-            var downloadedPaths = new List<string>();
+            List<string> downloadedPaths = [];
             foreach (var campaign in clubCampaigns)
             {
                 _console.WriteLine($"Found: {TextFormatter.Deformat(campaign.Name)} (ID: {campaign.Id})");
@@ -1054,16 +1059,16 @@ public class ToolboxApp
                 }
             }
         }
-        return new List<string>();
+        return [];
     }
 
     private async Task<List<string>> DownloadClubCampaign(int clubId, int campaignId, Config config)
     {
         var fullCampaign = await _api.GetClubCampaignAsync(clubId, campaignId);
-        if (fullCampaign?.Playlist == null) return new List<string>();
+        if (fullCampaign?.Playlist == null) return [];
 
-        var clubPart = !string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString();
-        var campaignPart = !string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString();
+        var clubPart = SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString());
+        var campaignPart = SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString());
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Clubs", clubPart, campaignPart);
         return await DownloadAndFixMaps(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
@@ -1071,12 +1076,12 @@ public class ToolboxApp
 
     public async Task<List<string>> HandleTmxMaps(string input, Config config)
     {
-        var downloadedPaths = new List<string>();
+        List<string> downloadedPaths = [];
         var ids = ParseTmxIds(input);
         if (!ids.Any()) return downloadedPaths;
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
-        var mapsToDownload = new List<MapDownloadRecord>();
+        List<MapDownloadRecord> mapsToDownload = [];
 
         foreach (var id in ids)
         {
@@ -1096,7 +1101,7 @@ public class ToolboxApp
 
     public async Task<List<string>> HandleTmxPacks(string input, Config config)
     {
-        var downloadedPaths = new List<string>();
+        List<string> downloadedPaths = [];
         var ids = ParseTmxIds(input);
         if (!ids.Any()) return downloadedPaths;
 
@@ -1109,9 +1114,10 @@ public class ToolboxApp
                 continue;
             }
 
-            _console.WriteLine($"Found Map Pack: {TextFormatter.Deformat(pack.Name)}");
+            var deformattedPackName = TextFormatter.Deformat(pack.Name);
+            _console.WriteLine($"Found Map Pack: {deformattedPackName}");
             var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
-            var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", TextFormatter.Deformat(pack.Name));
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", SanitizeFolderName(deformattedPackName));
 
             downloadedPaths.AddRange(await DownloadAndFixMaps(maps.Select((m, i) => new MapDownloadRecord(m.Name, null, _api.GetTmxMapUrl(m.Id), $"{(i + 1):D2} - ")), downloadDir, config));
         }
@@ -1127,7 +1133,7 @@ public class ToolboxApp
         if (results.Count == 0)
         {
             _console.WriteLine("No TMX maps found.");
-            return new List<string>();
+            return [];
         }
 
         if (!config.App.Interactive)
@@ -1144,7 +1150,7 @@ public class ToolboxApp
             return await HandleTmxMaps(displayResults[choice - 1].Id.ToString(), config);
         }
 
-        return new List<string>();
+        return [];
     }
 
     public async Task<List<string>> HandleTmxRandom(Config config)
@@ -1154,7 +1160,7 @@ public class ToolboxApp
         if (map == null)
         {
             _console.WriteLine("Error: Failed to fetch random map.");
-            return new List<string>();
+            return [];
         }
 
         _console.WriteLine($"Random Map: {TextFormatter.Deformat(map.Name)} by {map.AuthorName} (ID: {map.Id})");
@@ -1186,7 +1192,7 @@ public class ToolboxApp
     public async Task<List<string>> HandleTrackOfTheDay(string dateInput, Config config)
     {
         var now = _dateTime.UtcNow;
-        var ranges = new List<(DateTime Start, DateTime End)>();
+        List<(DateTime Start, DateTime End)> ranges = [];
 
         if (dateInput.Equals("latest", StringComparison.OrdinalIgnoreCase))
         {
@@ -1203,10 +1209,10 @@ public class ToolboxApp
             ranges = ParseToTdRanges(dateInput, now);
         }
 
-        if (!ranges.Any()) return new List<string>();
+        if (!ranges.Any()) return [];
 
-        var downloadedPaths = new List<string>();
-        var allDaysToDownload = new List<DateTime>();
+        List<string> downloadedPaths = [];
+        List<DateTime> allDaysToDownload = [];
         foreach (var range in ranges)
         {
             for (var d = range.Start; d <= range.End; d = d.AddDays(1))
@@ -1237,7 +1243,7 @@ public class ToolboxApp
 
     internal List<(DateTime Start, DateTime End)> ParseToTdRanges(string input, DateTime now)
     {
-        var ranges = new List<(DateTime Start, DateTime End)>();
+        List<(DateTime Start, DateTime End)> ranges = [];
         ForEachRange(input, new[] { ',' }, (s, e) =>
         {
             var start = ParseToTdDate(s, now);
@@ -1401,7 +1407,7 @@ public class ToolboxApp
 
     private async Task<List<ICampaignItem>> FetchAllCampaigns(Func<int, Task<ICampaignCollection>> fetchFunc, int maxPages = int.MaxValue)
     {
-        var all = new List<ICampaignItem>();
+        List<ICampaignItem> all = [];
         int page = 0, pageCount = 1;
         while (page < pageCount && page < maxPages)
         {
@@ -1444,7 +1450,7 @@ public class ToolboxApp
 
     internal List<(MapRef Start, MapRef End)> ParseMapRanges(string input)
     {
-        var ranges = new List<(MapRef Start, MapRef End)>();
+        List<(MapRef Start, MapRef End)> ranges = [];
         ForEachRange(input, new[] { ',', ' ' }, (s, e) =>
         {
             var start = ParseMapRef(s);
@@ -1481,7 +1487,7 @@ public class ToolboxApp
 
     internal List<(SeasonalRef Start, SeasonalRef End)> ParseSeasonalRanges(string input)
     {
-        var ranges = new List<(SeasonalRef Start, SeasonalRef End)>();
+        List<(SeasonalRef Start, SeasonalRef End)> ranges = [];
         ForEachRange(input, new[] { ',' }, (s, e) =>
         {
             var start = ParseSeasonalRef(s);
@@ -1565,6 +1571,16 @@ public class ToolboxApp
         _ => 0
     };
 
+    private string SanitizeFolderName(string folderName)
+    {
+        var sanitized = folderName;
+        foreach (var c in InvalidFileNameChars)
+        {
+            sanitized = sanitized.Replace(c, '_');
+        }
+        return sanitized.Trim();
+    }
+
     public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter, Config config)
     {
         if (!Guid.TryParse(playerId, out var accountId))
@@ -1592,7 +1608,7 @@ public class ToolboxApp
 
         campaignsToProcess = campaignsToProcess.OrderBy(c => c.Id).ToList();
 
-        var csvLines = new List<string> { "Campaign Name, Track Name, Medal, Best Time" };
+        List<string> csvLines = ["Campaign Name, Track Name, Medal, Best Time"];
 
         for (int i = 0; i < campaignsToProcess.Count; i++)
         {
@@ -1671,7 +1687,7 @@ public class ToolboxApp
 
     public List<string> RunBatchFixer(Config config, List<string>? extraFiles = null)
     {
-        var processedPaths = new List<string>();
+        var processedPaths = new ConcurrentBag<string>();
         var filesToProcess = new HashSet<string>();
 
         if (extraFiles != null)
@@ -1699,28 +1715,31 @@ public class ToolboxApp
             }
         }
 
-        if (filesToProcess.Count == 0) return processedPaths;
+        if (filesToProcess.Count == 0) return [];
 
         _console.WriteLine($"\nAnalyzing {filesToProcess.Count} maps...");
         int changed = 0;
 
-        foreach (var file in filesToProcess)
+        Parallel.ForEach(filesToProcess, file =>
         {
             try
             {
-                if (_fixer.ProcessFile(file, config)) changed++;
+                if (_fixer.ProcessFile(file, config))
+                {
+                    Interlocked.Increment(ref changed);
+                }
                 processedPaths.Add(file);
             }
             catch (Exception ex)
             {
                 _console.WriteLine($"Failed to process {file}: {ex.Message}");
             }
-        }
+        });
 
         if (config.Fixer.UpdateTitle || config.Fixer.ConvertPlatformMapType)
             _console.WriteLine($"\nBatch analysis complete. Analyzed: {filesToProcess.Count}, Updated: {changed}");
 
-        return processedPaths;
+        return processedPaths.ToList();
     }
 }
 
