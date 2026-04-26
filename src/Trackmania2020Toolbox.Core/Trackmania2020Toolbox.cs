@@ -10,6 +10,11 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Security.Cryptography;
+using System.Text;
 using GBX.NET;
 using GBX.NET.Engines.Game;
 using GBX.NET.LZO;
@@ -32,6 +37,104 @@ public interface ILeaderboard { IEnumerable<IRecord> Tops { get; } }
 public interface IRecord { TimeInt32 Time { get; } }
 
 public record MapDownloadRecord(string Name, string? FileName, string? FileUrl, string? Prefix);
+
+public class CacheEntry<T>
+{
+    public T? Data { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+
+public class CampaignCollectionDto : ICampaignCollection
+{
+    public List<CampaignItemDto> Campaigns { get; set; } = new();
+    IEnumerable<ICampaignItem> ICampaignCollection.Campaigns => Campaigns;
+    public int PageCount { get; set; }
+}
+
+public class CampaignItemDto : ICampaignItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public int? ClubId { get; set; }
+}
+
+public class CampaignDto : ICampaign
+{
+    public List<MapDto> Playlist { get; set; } = new();
+    IEnumerable<IMap> ICampaign.Playlist => Playlist;
+    public string Name { get; set; } = "";
+    public string? ClubName { get; set; }
+}
+
+public class MapDto : IMap
+{
+    public string Name { get; set; } = "";
+    public string? FileName { get; set; }
+    public string? FileUrl { get; set; }
+    public string MapUid { get; set; } = "";
+    public TimeInt32 AuthorScore { get; set; }
+    public TimeInt32 GoldScore { get; set; }
+    public TimeInt32 SilverScore { get; set; }
+    public TimeInt32 BronzeScore { get; set; }
+}
+
+public class TrackOfTheDayCollectionDto : ITrackOfTheDayCollection
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public List<TrackOfTheDayDayDto> Days { get; set; } = new();
+    IEnumerable<ITrackOfTheDayDay> ITrackOfTheDayCollection.Days => Days;
+}
+
+public class TrackOfTheDayDayDto : ITrackOfTheDayDay
+{
+    public int MonthDay { get; set; }
+    public TrackmaniaMapDto? Map { get; set; }
+    ITrackmaniaMap? ITrackOfTheDayDay.Map => Map;
+}
+
+public class TrackmaniaMapDto : ITrackmaniaMap
+{
+    public string Name { get; set; } = "";
+    public string? FileName { get; set; }
+    public string? FileUrl { get; set; }
+}
+
+public class LeaderboardDto : ILeaderboard
+{
+    public List<RecordDto> Tops { get; set; } = new();
+    IEnumerable<IRecord> ILeaderboard.Tops => Tops;
+}
+
+public class RecordDto : IRecord
+{
+    public TimeInt32 Time { get; set; }
+}
+
+public class TmxMapDto : ITmxMap
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string AuthorName { get; set; } = "";
+    public int AwardCount { get; set; }
+    public int DownloadCount { get; set; }
+}
+
+public class TmxMapPackDto : ITmxMapPack
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(CacheEntry<CampaignCollectionDto>))]
+[JsonSerializable(typeof(CacheEntry<CampaignDto>))]
+[JsonSerializable(typeof(CacheEntry<TrackOfTheDayCollectionDto>))]
+[JsonSerializable(typeof(CacheEntry<LeaderboardDto>))]
+[JsonSerializable(typeof(CacheEntry<TmxMapDto>))]
+[JsonSerializable(typeof(CacheEntry<List<TmxMapDto>>))]
+[JsonSerializable(typeof(CacheEntry<TmxMapPackDto>))]
+internal partial class ToolboxCacheContext : JsonSerializerContext { }
 
 public interface ITmxMap { int Id { get; } string Name { get; } string AuthorName { get; } int AwardCount { get; } int DownloadCount { get; } }
 public interface ITmxMapPack { int Id { get; } string Name { get; } }
@@ -62,6 +165,7 @@ public interface IFileSystem
     bool DirectoryExists(string path);
     void CreateDirectory(string path);
     bool FileExists(string path);
+    void DeleteFile(string path);
     Task WriteAllBytesAsync(string path, byte[] bytes);
     void WriteAllText(string path, string contents);
     Task WriteAllTextAsync(string path, string contents);
@@ -278,6 +382,15 @@ public class DesktopConfig
     public int LastSort { get; set; }
 }
 
+public class CacheConfig
+{
+    public bool Enabled { get; set; } = true;
+    public int StaticExpirationMinutes { get; set; } = 43200; // 30 days
+    public int DynamicExpirationMinutes { get; set; } = 60; // 1 hour
+    public int HighlyDynamicExpirationMinutes { get; set; } = 5; // 5 minutes
+    public string CacheDirectory { get; set; } = ".cache";
+}
+
 public class Config
 {
     public DownloaderConfig Downloader { get; set; } = new();
@@ -285,6 +398,7 @@ public class Config
     public FixerConfig Fixer { get; set; } = new();
     public AppConfig App { get; set; } = new();
     public DesktopConfig Desktop { get; set; } = new();
+    public CacheConfig Cache { get; set; } = new();
 
     public static Config Default
     {
@@ -297,6 +411,207 @@ public class Config
             return config;
         }
     }
+}
+
+public class CachedTrackmaniaApi : ITrackmaniaApi
+{
+    private readonly ITrackmaniaApi _inner;
+    private readonly IFileSystem _fs;
+    private readonly string _cacheDir;
+    private readonly CacheConfig _config;
+
+    public CachedTrackmaniaApi(ITrackmaniaApi inner, IFileSystem fs, string scriptDirectory, CacheConfig config)
+    {
+        _inner = inner;
+        _fs = fs;
+        _config = config;
+        _cacheDir = Path.IsPathRooted(config.CacheDirectory)
+            ? config.CacheDirectory
+            : Path.Combine(scriptDirectory, config.CacheDirectory);
+
+        if (_config.Enabled && !_fs.DirectoryExists(_cacheDir))
+        {
+            _fs.CreateDirectory(_cacheDir);
+        }
+    }
+
+    private async Task<T> GetCachedAsync<T>(string key, int expirationMinutes, Func<Task<T>> fetchFunc, JsonTypeInfo<CacheEntry<T>> typeInfo)
+    {
+        if (!_config.Enabled) return await fetchFunc();
+
+        var cacheFile = Path.Combine(_cacheDir, $"{key}.json");
+        if (_fs.FileExists(cacheFile))
+        {
+            try
+            {
+                var content = await _fs.ReadAllTextAsync(cacheFile);
+                var entry = JsonSerializer.Deserialize(content, typeInfo);
+                if (entry != null && (DateTime.UtcNow - entry.Timestamp).TotalMinutes < expirationMinutes)
+                {
+                    return entry.Data!;
+                }
+            }
+            catch { /* Ignore cache errors and refetch */ }
+        }
+
+        var data = await fetchFunc();
+        try
+        {
+            var entry = new CacheEntry<T> { Data = data, Timestamp = DateTime.UtcNow };
+            var content = JsonSerializer.Serialize(entry, typeInfo);
+            await _fs.WriteAllTextAsync(cacheFile, content);
+        }
+        catch { /* Ignore cache write errors */ }
+
+        return data;
+    }
+
+    private string GetCacheKey(string rawKey)
+    {
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawKey));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
+
+    public void ResetCache()
+    {
+        if (_fs.DirectoryExists(_cacheDir))
+        {
+            foreach (var file in _fs.GetFiles(_cacheDir, "*.json", SearchOption.TopDirectoryOnly))
+            {
+                try { _fs.DeleteFile(file); } catch { }
+            }
+        }
+    }
+
+    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) =>
+        await GetCachedAsync($"weekly_shorts_page_{page}", _config.DynamicExpirationMinutes,
+            async () => ToCampaignCollectionDto(await _inner.GetWeeklyShortCampaignsAsync(page)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+
+    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id) =>
+        await GetCachedAsync($"weekly_short_{id}", _config.StaticExpirationMinutes,
+            async () => ToCampaignDto(await _inner.GetWeeklyShortCampaignAsync(id)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+
+    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page) =>
+        await GetCachedAsync($"weekly_grands_page_{page}", _config.DynamicExpirationMinutes,
+            async () => ToCampaignCollectionDto(await _inner.GetWeeklyGrandCampaignsAsync(page)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+
+    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id) =>
+        await GetCachedAsync($"weekly_grand_{id}", _config.StaticExpirationMinutes,
+            async () => ToCampaignDto(await _inner.GetWeeklyGrandCampaignAsync(id)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+
+    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page) =>
+        await GetCachedAsync($"seasonal_page_{page}", _config.DynamicExpirationMinutes,
+            async () => ToCampaignCollectionDto(await _inner.GetSeasonalCampaignsAsync(page)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+
+    public async Task<ICampaign> GetSeasonalCampaignAsync(int id) =>
+        await GetCachedAsync($"seasonal_{id}", _config.StaticExpirationMinutes,
+            async () => ToCampaignDto(await _inner.GetSeasonalCampaignAsync(id)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+
+    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page) =>
+        await GetCachedAsync($"club_campaigns_page_{page}", _config.DynamicExpirationMinutes,
+            async () => ToCampaignCollectionDto(await _inner.GetClubCampaignsAsync(page)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+
+    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId) =>
+        await GetCachedAsync($"club_{clubId}_campaign_{campaignId}", _config.StaticExpirationMinutes,
+            async () => ToCampaignDto(await _inner.GetClubCampaignAsync(clubId, campaignId)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+
+    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset) =>
+        await GetCachedAsync($"totd_offset_{monthOffset}", _config.DynamicExpirationMinutes,
+            async () => ToTrackOfTheDayCollectionDto(await _inner.GetTrackOfTheDaysAsync(monthOffset)),
+            ToolboxCacheContext.Default.CacheEntryTrackOfTheDayCollectionDto);
+
+    public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId) =>
+        await GetCachedAsync($"leaderboard_{mapUid}_{accountId}", _config.HighlyDynamicExpirationMinutes,
+            async () => ToLeaderboardDto(await _inner.GetLeaderboardAsync(mapUid, accountId)),
+            ToolboxCacheContext.Default.CacheEntryLeaderboardDto);
+
+    public async Task<ITmxMap?> GetTmxMapAsync(int id) =>
+        await GetCachedAsync($"tmx_map_{id}", _config.StaticExpirationMinutes,
+            async () => ToTmxMapDto(await _inner.GetTmxMapAsync(id)),
+            ToolboxCacheContext.Default.CacheEntryTmxMapDto);
+
+    public string GetTmxMapUrl(int id) => _inner.GetTmxMapUrl(id);
+
+    public Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc) =>
+        GetCachedAsync($"tmx_search_{name}_{author}_{sort}_{desc}", _config.DynamicExpirationMinutes,
+            async () => (await _inner.SearchTmxMapsAsync(name, author, sort, desc)).Select(ToTmxMapDto).ToList()!,
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto).ContinueWith(t => t.Result.Cast<ITmxMap>());
+
+    public Task<ITmxMap?> GetRandomTmxMapAsync() => _inner.GetRandomTmxMapAsync();
+
+    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id) =>
+        await GetCachedAsync($"tmx_pack_{id}", _config.StaticExpirationMinutes,
+            async () => ToTmxMapPackDto(await _inner.GetTmxMapPackAsync(id)),
+            ToolboxCacheContext.Default.CacheEntryTmxMapPackDto);
+
+    public Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id) =>
+        GetCachedAsync($"tmx_pack_maps_{id}", _config.StaticExpirationMinutes,
+            async () => (await _inner.GetTmxMapPackMapsAsync(id)).Select(ToTmxMapDto).ToList(),
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto).ContinueWith(t => t.Result.Cast<ITmxMap>());
+
+    public void Dispose() => _inner.Dispose();
+
+    private CampaignCollectionDto ToCampaignCollectionDto(ICampaignCollection obj) => new()
+    {
+        PageCount = obj.PageCount,
+        Campaigns = obj.Campaigns.Select(c => new CampaignItemDto { Id = c.Id, Name = c.Name, ClubId = c.ClubId }).ToList()
+    };
+
+    private CampaignDto ToCampaignDto(ICampaign obj) => new()
+    {
+        Name = obj.Name,
+        ClubName = obj.ClubName,
+        Playlist = obj.Playlist.Select(m => new MapDto
+        {
+            Name = m.Name,
+            FileName = m.FileName,
+            FileUrl = m.FileUrl,
+            MapUid = m.MapUid,
+            AuthorScore = m.AuthorScore,
+            GoldScore = m.GoldScore,
+            SilverScore = m.SilverScore,
+            BronzeScore = m.BronzeScore
+        }).ToList()
+    };
+
+    private TrackOfTheDayCollectionDto ToTrackOfTheDayCollectionDto(ITrackOfTheDayCollection obj) => new()
+    {
+        Year = obj.Year,
+        Month = obj.Month,
+        Days = obj.Days.Select(d => new TrackOfTheDayDayDto
+        {
+            MonthDay = d.MonthDay,
+            Map = d.Map == null ? null : new TrackmaniaMapDto { Name = d.Map.Name, FileName = d.Map.FileName, FileUrl = d.Map.FileUrl }
+        }).ToList()
+    };
+
+    private LeaderboardDto ToLeaderboardDto(ILeaderboard obj) => new()
+    {
+        Tops = obj.Tops.Select(r => new RecordDto { Time = r.Time }).ToList()
+    };
+
+    private TmxMapDto? ToTmxMapDto(ITmxMap? obj) => obj == null ? null : new TmxMapDto
+    {
+        Id = obj.Id,
+        Name = obj.Name,
+        AuthorName = obj.AuthorName,
+        AwardCount = obj.AwardCount,
+        DownloadCount = obj.DownloadCount
+    };
+
+    private TmxMapPackDto? ToTmxMapPackDto(ITmxMapPack? obj) => obj == null ? null : new TmxMapPackDto
+    {
+        Id = obj.Id,
+        Name = obj.Name
+    };
 }
 
 public class TrackmaniaApiWrapper : ITrackmaniaApi
@@ -483,6 +798,7 @@ public class RealFileSystem : IFileSystem
     public bool DirectoryExists(string path) => Directory.Exists(path);
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
     public bool FileExists(string path) => File.Exists(path);
+    public void DeleteFile(string path) => File.Delete(path);
     public Task WriteAllBytesAsync(string path, byte[] bytes) => File.WriteAllBytesAsync(path, bytes);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
     public Task WriteAllTextAsync(string path, string contents) => File.WriteAllTextAsync(path, contents);
@@ -561,6 +877,8 @@ public class ToolboxApp
 
     public string ScriptDirectory => _scriptDirectory;
     public string DefaultMapsFolder => _defaultMapsFolder;
+
+    public ITrackmaniaApi Api => _api;
 
     public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
     {

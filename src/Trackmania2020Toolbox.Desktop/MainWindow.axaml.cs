@@ -57,6 +57,10 @@ public partial class MainWindow : Window
     private readonly CheckBox _enterToPlayCheck;
     private readonly CheckBox _saveLastFolderCheck;
     private readonly CheckBox _saveLastSortCheck;
+    private readonly CheckBox _cacheEnabledCheck;
+    private readonly NumericUpDown _staticCacheExpiryInput;
+    private readonly NumericUpDown _dynamicCacheExpiryInput;
+    private readonly NumericUpDown _highlyDynamicCacheExpiryInput;
 
     private readonly ListBox _browserList;
     private readonly TextBox _browserPathDisplay;
@@ -100,6 +104,10 @@ public partial class MainWindow : Window
         _enterToPlayCheck = this.FindControl<CheckBox>("EnterToPlayCheck")!;
         _saveLastFolderCheck = this.FindControl<CheckBox>("SaveLastFolderCheck")!;
         _saveLastSortCheck = this.FindControl<CheckBox>("SaveLastSortCheck")!;
+        _cacheEnabledCheck = this.FindControl<CheckBox>("CacheEnabledCheck")!;
+        _staticCacheExpiryInput = this.FindControl<NumericUpDown>("StaticCacheExpiryInput")!;
+        _dynamicCacheExpiryInput = this.FindControl<NumericUpDown>("DynamicCacheExpiryInput")!;
+        _highlyDynamicCacheExpiryInput = this.FindControl<NumericUpDown>("HighlyDynamicCacheExpiryInput")!;
 
         _browserList = this.FindControl<ListBox>("BrowserList")!;
         _browserPathDisplay = this.FindControl<TextBox>("BrowserPathDisplay")!;
@@ -107,22 +115,26 @@ public partial class MainWindow : Window
         _browserList.ItemsSource = _browserItems;
 
         var console = new LogConsole(AppendLog, selectionFunc: SelectItemAsync);
-        var api = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
         _fs = new RealFileSystem();
+        var scriptDir = TrackmaniaCLI.GetScriptDirectory();
+        _configService = new RealConfigService(_fs);
+        _config = _configService.LoadConfig(scriptDir);
+
+        var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
+        var api = new CachedTrackmaniaApi(rawApi, _fs, scriptDir, _config.Cache);
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         var dateTime = new RealDateTime();
         _browserService = new RealBrowserService(_fs);
-        _configService = new RealConfigService(_fs);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
             TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Add("User-Agent", TrackmaniaCLI.UserAgent);
 
-        _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, TrackmaniaCLI.GetScriptDirectory(), _configService);
+        _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, scriptDir, _configService);
 
         // Load initial settings
-        _ = LoadConfigAsync();
+        UpdateUiFromConfig();
 
         // Wire up buttons
         this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShorts(_weeklyShortsInput.Text ?? "latest", GetConfig()));
@@ -153,6 +165,18 @@ public partial class MainWindow : Window
             if (choice == 1) // "Yes, reset everything" is index 1 because SelectItemAsync returns 1-based index (0 is cancel)
             {
                 await ResetConfigAsync();
+            }
+        };
+        this.FindControl<Button>("ResetCacheBtn")!.Click += async (_, _) =>
+        {
+            var choice = await SelectItemAsync("Reset API Cache?", new[] { "Yes, clear all cached API data", "No, keep cache" });
+            if (choice == 1) // "Yes, clear all cached API data" is index 1
+            {
+                if (_app.Api is CachedTrackmaniaApi cachedApi)
+                {
+                    cachedApi.ResetCache();
+                    AppendLog($"API Cache cleared.{Environment.NewLine}");
+                }
             }
         };
         this.FindControl<Button>("BrowseFixerBtn")!.Click += async (_, _) =>
@@ -226,6 +250,10 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>
+    /// Displays a selection overlay and returns the 1-based index of the selected item.
+    /// Returns 0 if cancelled.
+    /// </summary>
     private async Task<int> SelectItemAsync(string title, IEnumerable<string> items)
     {
         _selectionTcs = new TaskCompletionSource<int>();
@@ -271,6 +299,11 @@ public partial class MainWindow : Window
 
         _config.Downloader.DownloadDelayMs = (int)(_downloadDelayMsInput.Value ?? 1000);
 
+        _config.Cache.Enabled = _cacheEnabledCheck.IsChecked ?? true;
+        _config.Cache.StaticExpirationMinutes = (int)(_staticCacheExpiryInput.Value ?? 43200);
+        _config.Cache.DynamicExpirationMinutes = (int)(_dynamicCacheExpiryInput.Value ?? 60);
+        _config.Cache.HighlyDynamicExpirationMinutes = (int)(_highlyDynamicCacheExpiryInput.Value ?? 5);
+
         return _config;
     }
 
@@ -309,6 +342,11 @@ public partial class MainWindow : Window
     private async Task LoadConfigAsync()
     {
         _config = await _configService.LoadConfigAsync(_app.ScriptDirectory);
+        UpdateUiFromConfig();
+    }
+
+    private void UpdateUiFromConfig()
+    {
         _gamePathInput.Text = _config.App.SetGamePath;
         _browserFolderInput.Text = _config.Desktop.BrowserFolder;
         _downloadDelayMsInput.Value = _config.Downloader.DownloadDelayMs;
@@ -318,6 +356,11 @@ public partial class MainWindow : Window
         _saveLastFolderCheck.IsChecked = _config.Desktop.SaveLastFolder;
         _saveLastSortCheck.IsChecked = _config.Desktop.SaveLastSort;
         _fixerFolderInput.Text = _config.Fixer.FolderPath;
+
+        _cacheEnabledCheck.IsChecked = _config.Cache.Enabled;
+        _staticCacheExpiryInput.Value = _config.Cache.StaticExpirationMinutes;
+        _dynamicCacheExpiryInput.Value = _config.Cache.DynamicExpirationMinutes;
+        _highlyDynamicCacheExpiryInput.Value = _config.Cache.HighlyDynamicExpirationMinutes;
 
         if (_config.Desktop.SaveLastFolder && !string.IsNullOrEmpty(_config.Desktop.LastFolder) && _fs.DirectoryExists(_config.Desktop.LastFolder))
         {
