@@ -213,8 +213,8 @@ public static class TrackmaniaCLI
         Console.WriteLine("  --force                    Overwrite existing files");
         Console.WriteLine("  --non-interactive          Disable interactive mode (don't ask for selection)");
         Console.WriteLine("  --folder, -f <path>        Folder for batch fixing (default: Documents\\Trackmania2020\\Maps\\Toolbox)");
-        Console.WriteLine("  --skip-title-update        Do not update TitleId (OrbitalDev@falguiere -> TMStadium)");
-        Console.WriteLine("  --skip-maptype-convert     Do not convert MapType (TM_Platform -> TM_Race)");
+        Console.WriteLine($"  --skip-title-update        Do not update TitleId ({RealMapFixer.LegacyTitleId} -> {RealMapFixer.TargetTitleId})");
+        Console.WriteLine($"  --skip-maptype-convert     Do not convert MapType ({RealMapFixer.LegacyMapType.Replace("TrackMania\\", "")} -> {RealMapFixer.TargetMapType.Replace("TrackMania\\", "")})");
         Console.WriteLine("  --dry-run                  Show changes without saving");
         Console.WriteLine("  --help, -h                 Show this help message");
         Console.WriteLine("\nPositional arguments:");

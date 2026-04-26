@@ -255,4 +255,38 @@ public class ToolboxAppExpandedTests
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("P1-FileA")), It.IsAny<byte[]>()), Times.Once);
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Map B")), It.IsAny<byte[]>()), Times.Once);
     }
+
+    [Fact]
+    public async Task DownloadClubCampaign_ShouldSanitizeFolderName()
+    {
+        var campaignItem = new Mock<ICampaignItem>();
+        campaignItem.Setup(c => c.Id).Returns(456);
+        campaignItem.Setup(c => c.ClubId).Returns(10);
+        campaignItem.Setup(c => c.Name).Returns("Club / Campaign?");
+
+        var collection = new Mock<ICampaignCollection>();
+        collection.Setup(c => c.Campaigns).Returns([campaignItem.Object]);
+        collection.Setup(c => c.PageCount).Returns(1);
+
+        _apiMock.Setup(a => a.GetClubCampaignsAsync(0)).ReturnsAsync(collection.Object);
+
+        var map = new Mock<IMap>();
+        map.Setup(m => m.Name).Returns("Map 1");
+        map.Setup(m => m.FileUrl).Returns("http://url");
+
+        var campaign = new Mock<ICampaign>();
+        campaign.Setup(c => c.Playlist).Returns([map.Object]);
+        campaign.Setup(c => c.ClubName).Returns("Club: Name");
+        campaign.Setup(c => c.Name).Returns("Club / Campaign?");
+        _apiMock.Setup(a => a.GetClubCampaignAsync(10, 456)).ReturnsAsync(campaign.Object);
+
+        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+
+        var config = TrackmaniaCLI.ParseArguments(["--club-campaign", "10/456"], Config.Default);
+        await _app.HandleClubCampaign("10/456", config);
+
+        // "/" and ":" should be replaced by "_"
+        _fsMock.Verify(f => f.DirectoryExists(It.Is<string>(s => s.Contains("Club_ Name") && s.Contains("Club _ Campaign_"))), Times.AtLeastOnce);
+    }
 }

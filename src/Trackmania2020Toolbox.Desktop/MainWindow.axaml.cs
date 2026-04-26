@@ -243,8 +243,11 @@ public partial class MainWindow : Window
 
     private void AppendLog(string text)
     {
-        _logOutput.Text += text;
-        _logOutput.CaretIndex = _logOutput.Text?.Length ?? 0;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _logOutput.Text += text;
+            _logOutput.CaretIndex = _logOutput.Text?.Length ?? 0;
+        });
     }
 
     private Config GetConfig()
@@ -451,7 +454,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _app.LaunchGame(new List<string> { item.FullPath });
+                _app.LaunchGame([item.FullPath]);
             }
         }
     }
@@ -460,7 +463,7 @@ public partial class MainWindow : Window
     {
         if (_browserList.SelectedItem is BrowserItem item && !item.IsDirectory)
         {
-            _app.LaunchGame(new List<string> { item.FullPath });
+            _app.LaunchGame([item.FullPath]);
         }
     }
 
