@@ -1069,7 +1069,7 @@ public class ToolboxApp
         HandleWeeklyCampaign(input, config, "Weekly Grands",
             p => _api.GetWeeklyGrandCampaignsAsync(p),
             id => _api.GetWeeklyGrandCampaignAsync(id),
-            @"\bWeek Grand 0*(\d+)\b",
+            @"\bWeekly Grand 0*(\d+)\b",
             weekId => Path.Combine(_defaultMapsFolder, "Weekly Grands"),
             (m, i, weekId) => $"{weekId} - ");
 
