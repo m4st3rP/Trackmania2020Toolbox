@@ -155,7 +155,7 @@ public partial class MainWindow : Window
         this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) =>
         {
             AppendLog("Running batch fixer..." + Environment.NewLine);
-            await Task.Run(() => _app.RunBatchFixer(GetConfig()));
+            await _app.RunBatchFixerAsync(GetConfig());
         };
         this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedals(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig()));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();

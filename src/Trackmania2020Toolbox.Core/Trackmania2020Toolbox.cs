@@ -17,6 +17,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Security.Cryptography;
 using System.Text;
+using System.Buffers;
 using GBX.NET;
 using GBX.NET.Engines.Game;
 using GBX.NET.LZO;
@@ -186,7 +187,7 @@ public interface INetworkService
 
 public interface IMapFixer
 {
-    bool ProcessFile(string filePath, Config config);
+    Task<bool> ProcessFileAsync(string filePath, Config config);
 }
 
 public interface IDateTime { DateTime UtcNow { get; } }
@@ -219,14 +220,9 @@ public interface IConfigService
 [TomlSerializable(typeof(Config))]
 internal partial class ToolboxConfigContext : TomlSerializerContext { }
 
-public class RealConfigService : IConfigService
+public class RealConfigService(IFileSystem fs) : IConfigService
 {
-    private readonly IFileSystem _fs;
-
-    public RealConfigService(IFileSystem fs)
-    {
-        _fs = fs;
-    }
+    private readonly IFileSystem _fs = fs;
 
     public async Task<Config> LoadConfigAsync(string scriptDirectory)
     {
@@ -281,14 +277,9 @@ public class RealConfigService : IConfigService
     }
 }
 
-public class RealBrowserService : IBrowserService
+public class RealBrowserService(IFileSystem fs) : IBrowserService
 {
-    private readonly IFileSystem _fs;
-
-    public RealBrowserService(IFileSystem fs)
-    {
-        _fs = fs;
-    }
+    private readonly IFileSystem _fs = fs;
 
     public IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending)
     {
@@ -542,10 +533,13 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
 
     public string GetTmxMapUrl(int id) => _inner.GetTmxMapUrl(id);
 
-    public Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc) =>
-        GetCachedAsync($"tmx_search_{name}_{author}_{sort}_{desc}", _config.DynamicExpirationMinutes,
+    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
+    {
+        var list = await GetCachedAsync($"tmx_search_{name}_{author}_{sort}_{desc}", _config.DynamicExpirationMinutes,
             async () => (await _inner.SearchTmxMapsAsync(name, author, sort, desc)).Select(ToTmxMapDto).ToList()!,
-            ToolboxCacheContext.Default.CacheEntryListTmxMapDto).ContinueWith(t => t.Result.Cast<ITmxMap>());
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto);
+        return list.Cast<ITmxMap>();
+    }
 
     public Task<ITmxMap?> GetRandomTmxMapAsync() => _inner.GetRandomTmxMapAsync();
 
@@ -554,10 +548,13 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             async () => ToTmxMapPackDto(await _inner.GetTmxMapPackAsync(id)),
             ToolboxCacheContext.Default.CacheEntryTmxMapPackDto);
 
-    public Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id) =>
-        GetCachedAsync($"tmx_pack_maps_{id}", _config.StaticExpirationMinutes,
+    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id)
+    {
+        var list = await GetCachedAsync($"tmx_pack_maps_{id}", _config.StaticExpirationMinutes,
             async () => (await _inner.GetTmxMapPackMapsAsync(id)).Select(ToTmxMapDto).ToList(),
-            ToolboxCacheContext.Default.CacheEntryListTmxMapDto).ContinueWith(t => t.Result.Cast<ITmxMap>());
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto);
+        return list.Cast<ITmxMap>();
+    }
 
     public void Dispose() => _inner.Dispose();
 
@@ -616,16 +613,10 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
     };
 }
 
-public class TrackmaniaApiWrapper : ITrackmaniaApi
+public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITrackmaniaApi
 {
-    private readonly TrackmaniaIO _api;
-    private readonly MX _tmx;
-
-    public TrackmaniaApiWrapper(HttpClient httpClient, string userAgent)
-    {
-        _api = new TrackmaniaIO(userAgent);
-        _tmx = new MX(httpClient, TmxSite.Trackmania);
-    }
+    private readonly TrackmaniaIO _api = new(userAgent);
+    private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
 
     public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page));
     public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id) => new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id));
@@ -812,10 +803,9 @@ public class RealFileSystem : IFileSystem
     public string[] GetDirectories(string path) => Directory.GetDirectories(path);
 }
 
-public class RealNetworkService : INetworkService
+public class RealNetworkService(HttpClient httpClient) : INetworkService
 {
-    private readonly HttpClient _httpClient;
-    public RealNetworkService(HttpClient httpClient) => _httpClient = httpClient;
+    private readonly HttpClient _httpClient = httpClient;
     public Task<byte[]> GetByteArrayAsync(string url) => _httpClient.GetByteArrayAsync(url);
 }
 
@@ -826,12 +816,12 @@ public class RealMapFixer : IMapFixer
     public const string LegacyMapType = "TrackMania\\TM_Platform";
     public const string TargetMapType = "TrackMania\\TM_Race";
 
-    public bool ProcessFile(string filePath, Config cfg)
+    public async Task<bool> ProcessFileAsync(string filePath, Config cfg)
     {
         var fixerCfg = cfg.Fixer;
         if (!fixerCfg.UpdateTitle && !fixerCfg.ConvertPlatformMapType) return false;
 
-        var gbx = Gbx.Parse<CGameCtnChallenge>(filePath);
+        var gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath);
         var map = gbx.Node;
         bool changed = false;
 
@@ -861,42 +851,29 @@ public class RealMapFixer : IMapFixer
 
 public class RealDateTime : IDateTime { public DateTime UtcNow => DateTime.UtcNow; }
 
-
-public class ToolboxApp
+public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
 {
     private const int TotdReleaseHour = 17;
-    private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars()
-        .Union(new[] { '/', '\\', ':', '*', '?', '\"', '<', '>', '|' })
+    private static readonly SearchValues<char> InvalidFileNameChars = SearchValues.Create(
+        Path.GetInvalidFileNameChars()
+        .Union(['/', '\\', ':', '*', '?', '\"', '<', '>', '|'])
         .Distinct()
-        .ToArray();
+        .ToArray());
 
-    private readonly ITrackmaniaApi _api;
-    private readonly IFileSystem _fs;
-    private readonly INetworkService _net;
-    private readonly IMapFixer _fixer;
-    private readonly IConsole _console;
-    private readonly IDateTime _dateTime;
-    private readonly IConfigService _configService;
-    private readonly string _scriptDirectory;
-    private readonly string _defaultMapsFolder;
+    private readonly ITrackmaniaApi _api = api;
+    private readonly IFileSystem _fs = fs;
+    private readonly INetworkService _net = net;
+    private readonly IMapFixer _fixer = fixer;
+    private readonly IConsole _console = console;
+    private readonly IDateTime _dateTime = dateTime;
+    private readonly IConfigService _configService = configService ?? new RealConfigService(fs);
+    private readonly string _scriptDirectory = scriptDirectory;
+    private readonly string _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
 
     public string ScriptDirectory => _scriptDirectory;
     public string DefaultMapsFolder => _defaultMapsFolder;
 
     public ITrackmaniaApi Api => _api;
-
-    public ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
-    {
-        _api = api;
-        _fs = fs;
-        _net = net;
-        _fixer = fixer;
-        _console = console;
-        _dateTime = dateTime;
-        _scriptDirectory = scriptDirectory;
-        _configService = configService ?? new RealConfigService(fs);
-        _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
-    }
 
     public async Task RunAsync(Config config)
     {
@@ -979,7 +956,7 @@ public class ToolboxApp
 
         if (fixerCfg.ExplicitFolder || appCfg.ExtraPaths.Count > 0 || (!downloadActionTaken && appCfg.SetGamePath == null))
         {
-            var fixedPaths = RunBatchFixer(config, appCfg.ExtraPaths);
+            var fixedPaths = await RunBatchFixerAsync(config, appCfg.ExtraPaths);
             foreach (var path in fixedPaths)
             {
                 if (!mapPaths.Contains(path)) mapPaths.Add(path);
@@ -1715,7 +1692,7 @@ public class ToolboxApp
             }
             fileName += extension;
 
-            foreach (var c in InvalidFileNameChars) fileName = fileName.Replace(c, '_');
+            fileName = SanitizeString(fileName);
 
             if (!string.IsNullOrEmpty(prefix)) fileName = prefix + fileName;
 
@@ -1735,7 +1712,7 @@ public class ToolboxApp
                 await _fs.WriteAllBytesAsync(filePath, fileData);
                 _console.Write("Downloaded and ");
 
-                if (_fixer.ProcessFile(filePath, config))
+                if (await _fixer.ProcessFileAsync(filePath, config))
                 {
                     var fileNameOnly = Path.GetFileName(filePath);
                     var deformattedFileName = TextFormatter.Deformat(fileNameOnly);
@@ -1937,14 +1914,19 @@ public class ToolboxApp
         _ => 0
     };
 
-    private string SanitizeFolderName(string folderName)
+    private string SanitizeFolderName(string folderName) => SanitizeString(folderName).Trim();
+
+    private string SanitizeString(string input)
     {
-        var sanitized = folderName;
-        foreach (var c in InvalidFileNameChars)
+        return string.Create(input.Length, input, (span, state) =>
         {
-            sanitized = sanitized.Replace(c, '_');
-        }
-        return sanitized.Trim();
+            state.AsSpan().CopyTo(span);
+            int index;
+            while ((index = span.IndexOfAny(InvalidFileNameChars)) != -1)
+            {
+                span[index] = '_';
+            }
+        });
     }
 
     public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter, Config config)
@@ -2051,7 +2033,7 @@ public class ToolboxApp
         }
     }
 
-    public List<string> RunBatchFixer(Config config, List<string>? extraFiles = null)
+    public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
     {
         var processedPaths = new ConcurrentBag<string>();
         var filesToProcess = new HashSet<string>();
@@ -2086,11 +2068,11 @@ public class ToolboxApp
         _console.WriteLine($"\nAnalyzing {filesToProcess.Count} maps...");
         int changed = 0;
 
-        Parallel.ForEach(filesToProcess, file =>
+        await Parallel.ForEachAsync(filesToProcess, async (file, ct) =>
         {
             try
             {
-                if (_fixer.ProcessFile(file, config))
+                if (await _fixer.ProcessFileAsync(file, config))
                 {
                     Interlocked.Increment(ref changed);
                 }
@@ -2105,7 +2087,7 @@ public class ToolboxApp
         if (config.Fixer.UpdateTitle || config.Fixer.ConvertPlatformMapType)
             _console.WriteLine($"\nBatch analysis complete. Analyzed: {filesToProcess.Count}, Updated: {changed}");
 
-        return processedPaths.ToList();
+        return [.. processedPaths];
     }
 }
 

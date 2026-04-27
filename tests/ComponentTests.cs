@@ -74,7 +74,7 @@ public class ComponentTests : IDisposable
         _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaign.Object);
 
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[100]);
-        _fixerMock.Setup(f => f.ProcessFile(It.IsAny<string>(), It.IsAny<Config>())).Returns(true);
+        _fixerMock.Setup(f => f.ProcessFileAsync(It.IsAny<string>(), It.IsAny<Config>())).ReturnsAsync(true);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "Winter 2024", "--folder", _tempDir }, Config.Default);
 
@@ -91,12 +91,12 @@ public class ComponentTests : IDisposable
     }
 
     [Fact]
-    public void BatchFixer_ShouldUpdateRealFilesOnDisk()
+    public async Task BatchFixer_ShouldUpdateRealFilesOnDisk()
     {
         var mapPath = Path.Combine(_tempDir, "test.Map.Gbx");
         File.WriteAllBytes(mapPath, new byte[100]); // Dummy file
 
-        _fixerMock.Setup(f => f.ProcessFile(It.IsAny<string>(), It.IsAny<Config>())).Returns(true);
+        _fixerMock.Setup(f => f.ProcessFileAsync(It.IsAny<string>(), It.IsAny<Config>())).ReturnsAsync(true);
 
         var config = new Config
         {
@@ -127,10 +127,10 @@ public class ComponentTests : IDisposable
             }
         };
 
-        var processed = _app.RunBatchFixer(config);
+        var processed = await _app.RunBatchFixerAsync(config);
 
         Assert.Single(processed);
         Assert.Equal(mapPath, processed[0]);
-        _fixerMock.Verify(f => f.ProcessFile(mapPath, It.IsAny<Config>()), Times.Once);
+        _fixerMock.Verify(f => f.ProcessFileAsync(mapPath, It.IsAny<Config>()), Times.Once);
     }
 }
