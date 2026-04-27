@@ -1324,6 +1324,12 @@ public class ToolboxApp
 
     public async Task<List<string>> HandleClubCampaign(string input, Config config)
     {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            _console.WriteLine("Error: Club campaign input is empty.");
+            return [];
+        }
+
         int clubId, campaignId;
         var parts = input.Split('/');
         if (parts.Length == 2 && int.TryParse(parts[0], out clubId) && int.TryParse(parts[1], out campaignId))
@@ -1359,7 +1365,7 @@ public class ToolboxApp
 
             if (matches.Count == 0)
             {
-                _console.WriteLine("No matching club campaigns found.");
+                _console.WriteLine($"Error: No matching club campaigns found for '{input}'.");
             }
             else if (matches.Count == 1 || !config.App.Interactive)
             {
@@ -1492,17 +1498,35 @@ public class ToolboxApp
         foreach (var part in parts)
         {
             var trimmed = part.Trim();
+            bool parsed = false;
             if (trimmed.StartsWith("https://trackmania.exchange/maps/", StringComparison.OrdinalIgnoreCase))
             {
                 var match = Regex.Match(trimmed, @"/maps/(\d+)");
-                if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
+                {
+                    result.Add(id);
+                    parsed = true;
+                }
             }
             else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
             {
                 var match = Regex.Match(trimmed, @"/mappack/(\d+)");
-                if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) result.Add(id);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
+                {
+                    result.Add(id);
+                    parsed = true;
+                }
             }
-            else if (int.TryParse(trimmed, out var num)) result.Add(num);
+            else if (int.TryParse(trimmed, out var num))
+            {
+                result.Add(num);
+                parsed = true;
+            }
+
+            if (!parsed)
+            {
+                _console.WriteLine($"Error: Could not parse TMX ID or URL '{trimmed}'.");
+            }
         }
         return result.ToList();
     }
@@ -1565,7 +1589,11 @@ public class ToolboxApp
         ForEachRange(input, new[] { ',' }, (s, e) =>
         {
             var start = ParseToTdDate(s, now);
-            if (!start.HasValue) return;
+            if (!start.HasValue)
+            {
+                _console.WriteLine($"Error: Could not parse date '{s}'.");
+                return;
+            }
 
             if (e == null)
             {
@@ -1598,6 +1626,10 @@ public class ToolboxApp
                     {
                         if (start.Value.Start <= end.Value.End) ranges.Add((start.Value.Start, end.Value.End));
                         else ranges.Add((end.Value.Start, start.Value.End));
+                    }
+                    else
+                    {
+                        _console.WriteLine($"Error: Could not parse date '{e}'.");
                     }
                 }
             }
@@ -1772,7 +1804,11 @@ public class ToolboxApp
         ForEachRange(input, new[] { ',', ' ' }, (s, e) =>
         {
             var start = ParseMapRef(s);
-            if (start == null) return;
+            if (start == null)
+            {
+                _console.WriteLine($"Error: Could not parse map reference '{s}'.");
+                return;
+            }
 
             if (e == null)
             {
@@ -1785,6 +1821,10 @@ public class ToolboxApp
                 {
                     if (start.CompareTo(end) <= 0) ranges.Add((start, end));
                     else ranges.Add((end, start));
+                }
+                else
+                {
+                    _console.WriteLine($"Error: Could not parse map reference '{e}'.");
                 }
             }
         });
@@ -1809,7 +1849,11 @@ public class ToolboxApp
         ForEachRange(input, new[] { ',' }, (s, e) =>
         {
             var start = ParseSeasonalRef(s);
-            if (start == null) return;
+            if (start == null)
+            {
+                _console.WriteLine($"Error: Could not parse seasonal reference '{s}'.");
+                return;
+            }
 
             if (e == null)
             {
@@ -1834,6 +1878,10 @@ public class ToolboxApp
 
                     if (finalStart.CompareTo(finalEnd) <= 0) ranges.Add((finalStart, finalEnd));
                     else ranges.Add((finalEnd, finalStart));
+                }
+                else
+                {
+                    _console.WriteLine($"Error: Could not parse seasonal reference '{e}'.");
                 }
             }
         });

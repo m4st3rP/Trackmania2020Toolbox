@@ -58,7 +58,7 @@
 
                         <HeaderedContentControl Header="Weekly Shorts">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="Weeks (e.g., 68, 70-72) or 'latest':"/>
+                                <TextBlock Text="Weeks (e.g., 68, 70-72, 68.1-68.3), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
                                     <TextBox Name="WeeklyShortsInput" Text="latest"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="WeeklyShortsBtn"/>
@@ -68,7 +68,7 @@
 
                         <HeaderedContentControl Header="Weekly Grands">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="Weeks (e.g., 65) or 'latest':"/>
+                                <TextBlock Text="Weeks (e.g., 65, 60-65, 65.1-65.3), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
                                     <TextBox Name="WeeklyGrandsInput" Text="latest"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="WeeklyGrandsBtn"/>
@@ -78,7 +78,7 @@
 
                         <HeaderedContentControl Header="Seasonal">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="Campaign name (e.g., Winter 2024) or 'latest':"/>
+                                <TextBlock Text="Name, year, range (e.g., Summer 2022-Fall 2022, 2024, Winter 2024.1), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
                                     <TextBox Name="SeasonalInput" Text="latest"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="SeasonalBtn"/>
@@ -88,7 +88,7 @@
 
                         <HeaderedContentControl Header="Track of the Day">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="Date (YYYY-MM, YYYY-MM-DD, or range) or 'latest':"/>
+                                <TextBlock Text="Date (YYYY, YYYY-MM, YYYY-MM-DD, range), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
                                     <TextBox Name="ToTDInput" Text="latest"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ToTDBtn"/>
@@ -98,7 +98,7 @@
 
                         <HeaderedContentControl Header="Club Campaign">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="Search term or ID (clubId/campaignId):"/>
+                                <TextBlock Text="Search term, ID (clubId/campaignId), or single Club ID:"/>
                                 <Grid ColumnDefinitions="*, Auto">
                                     <TextBox Name="ClubInput"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ClubBtn"/>
