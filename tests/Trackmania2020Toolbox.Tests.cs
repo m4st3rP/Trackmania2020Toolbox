@@ -184,16 +184,16 @@ public class ToolboxTests
     }
 
     [Fact]
-    public void RunBatchFixer_ShouldProcessExtraPaths()
+    public async Task RunBatchFixer_ShouldProcessExtraPaths()
     {
         var config = TrackmaniaCLI.ParseArguments(new[] { "--dry-run", "test-map.Map.Gbx" }, Config.Default);
 
         _fsMock.Setup(f => f.FileExists("test-map.Map.Gbx")).Returns(true);
         _fsMock.Setup(f => f.DirectoryExists("test-map.Map.Gbx")).Returns(false);
 
-        _app.RunBatchFixer(config, config.App.ExtraPaths);
+        await _app.RunBatchFixerAsync(config, config.App.ExtraPaths);
 
-        _fixerMock.Verify(f => f.ProcessFile("test-map.Map.Gbx", config), Times.Once);
+        _fixerMock.Verify(f => f.ProcessFileAsync("test-map.Map.Gbx", config), Times.Once);
     }
 
     [Fact]
