@@ -41,7 +41,7 @@ public class ToolboxAppExpandedTests
     {
         var campaignItem = new Mock<ICampaignItem>();
         campaignItem.Setup(c => c.Id).Returns(123);
-        campaignItem.Setup(c => c.Name).Returns("Week Grand 65");
+        campaignItem.Setup(c => c.Name).Returns("Weekly Grand 65");
 
         var collection = new Mock<ICampaignCollection>();
         collection.Setup(c => c.Campaigns).Returns(new[] { campaignItem.Object });
