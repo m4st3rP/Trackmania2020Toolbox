@@ -27,6 +27,8 @@ public class RealConsole : IConsole
         {
             Write("\nSelect a number (or 0 to cancel): ");
             var input = ReadLine();
+            if (input == null) return Task.FromResult(0);
+
             if (int.TryParse(input, out var choice))
             {
                 if (choice >= 0 && choice <= itemList.Count)
