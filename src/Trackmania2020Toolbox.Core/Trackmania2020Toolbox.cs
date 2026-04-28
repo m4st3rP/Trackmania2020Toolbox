@@ -176,6 +176,7 @@ public interface IFileSystem
     Task<string> ReadAllTextAsync(string path);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
+    Task WriteAllLinesAsync(string path, IEnumerable<string> contents);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
     string[] GetDirectories(string path);
 }
@@ -223,57 +224,82 @@ internal partial class ToolboxConfigContext : TomlSerializerContext { }
 public class RealConfigService(IFileSystem fs) : IConfigService
 {
     private readonly IFileSystem _fs = fs;
+    private readonly SemaphoreSlim _lock = new(1, 1);
 
     public async Task<Config> LoadConfigAsync(string scriptDirectory)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        if (_fs.FileExists(configPath))
+        await _lock.WaitAsync();
+        try
         {
-            try
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            if (_fs.FileExists(configPath))
             {
-                var content = await _fs.ReadAllTextAsync(configPath);
-                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                if (config != null) return config;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
-                Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                if (ex.InnerException != null)
+                try
                 {
-                    Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                    var content = await _fs.ReadAllTextAsync(configPath);
+                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                    if (config != null) return config;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+                    Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                    }
                 }
             }
-        }
 
-        return Config.Default;
+            return Config.Default;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public Config LoadConfig(string scriptDirectory)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        if (_fs.FileExists(configPath))
+        _lock.Wait();
+        try
         {
-            try
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            if (_fs.FileExists(configPath))
             {
-                var content = _fs.ReadAllText(configPath);
-                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                if (config != null) return config;
+                try
+                {
+                    var content = _fs.ReadAllText(configPath);
+                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                    if (config != null) return config;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
-            }
-        }
 
-        return Config.Default;
+            return Config.Default;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task SaveConfigAsync(string scriptDirectory, Config config)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
-        await _fs.WriteAllTextAsync(configPath, content);
+        await _lock.WaitAsync();
+        try
+        {
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
+            await _fs.WriteAllTextAsync(configPath, content);
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 }
 
@@ -393,12 +419,14 @@ public class Config
     public DesktopConfig Desktop { get; set; } = new();
     public CacheConfig Cache { get; set; } = new();
 
+    public static string DefaultMapsFolder => Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+
     public static Config Default
     {
         get
         {
             var config = new Config();
-            var defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+            var defaultMapsFolder = DefaultMapsFolder;
             config.Fixer.FolderPath = defaultMapsFolder;
             config.Desktop.BrowserFolder = defaultMapsFolder;
             return config;
@@ -432,7 +460,8 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
     {
         if (!_config.Enabled) return await fetchFunc();
 
-        var cacheFile = Path.Combine(_cacheDir, $"{key}.json");
+        var hashedKey = GetCacheKey(key);
+        var cacheFile = Path.Combine(_cacheDir, $"{hashedKey}.json");
         if (_fs.FileExists(cacheFile))
         {
             try
@@ -799,6 +828,7 @@ public class RealFileSystem : IFileSystem
     public Task<string> ReadAllTextAsync(string path) => File.ReadAllTextAsync(path);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
+    public Task WriteAllLinesAsync(string path, IEnumerable<string> contents) => File.WriteAllLinesAsync(path, contents);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
     public string[] GetDirectories(string path) => Directory.GetDirectories(path);
 }
@@ -868,7 +898,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
     private readonly IDateTime _dateTime = dateTime;
     private readonly IConfigService _configService = configService ?? new RealConfigService(fs);
     private readonly string _scriptDirectory = scriptDirectory;
-    private readonly string _defaultMapsFolder = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "Trackmania2020", "Maps", "Toolbox");
+    private readonly string _defaultMapsFolder = Config.DefaultMapsFolder;
 
     public string ScriptDirectory => _scriptDirectory;
     public string DefaultMapsFolder => _defaultMapsFolder;
@@ -1002,13 +1032,13 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         if (string.IsNullOrEmpty(gamePath))
         {
             _console.WriteLine("Error: Trackmania.exe path not set.");
-            _console.WriteLine("Please set it using: dotnet run --project src/Trackmania2020Toolbox.csproj -- --set-game-path \"C:\\Path\\To\\Trackmania.exe\"");
+            _console.WriteLine("Please set it in the Settings tab or via CLI using: --set-game-path \"C:\\Path\\To\\Trackmania.exe\"");
             return;
         }
 
         if (!_fs.FileExists(gamePath))
         {
-            _console.WriteLine($"Error: Trackmania.exe not found at {gamePath}");
+            _console.WriteLine($"Error: Trackmania.exe not found at: {gamePath}");
             return;
         }
 
@@ -1018,15 +1048,26 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         var firstMap = sortedMaps.First();
         if (sortedMaps.Count > 1)
         {
-            _console.WriteLine($"Note: Drag-and-drop only supports one map. Launching the first one: {Path.GetFileName(firstMap)}");
+            _console.WriteLine($"Note: Multiple maps selected. Launching only the first one: {Path.GetFileName(firstMap)}");
         }
 
-        var arguments = $"\"{Path.GetFullPath(firstMap)}\"";
+        if (!_fs.FileExists(firstMap))
+        {
+            _console.WriteLine($"Error: Map file not found: {firstMap}");
+            return;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = gamePath,
+            Arguments = $"\"{Path.GetFullPath(firstMap)}\"",
+            UseShellExecute = true
+        };
 
         try
         {
-            _console.WriteLine($"Launching Trackmania with the map...");
-            Process.Start(gamePath, arguments);
+            _console.WriteLine($"Launching Trackmania with the map: {Path.GetFileName(firstMap)}");
+            Process.Start(psi);
         }
         catch (Exception ex)
         {
@@ -1929,7 +1970,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         });
     }
 
-    public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter, Config config)
+    public async Task HandleExportCampaignMedals(string playerId, string? campaignNameFilter, Config config, string? outputPath = null)
     {
         if (!Guid.TryParse(playerId, out var accountId))
         {
@@ -2018,20 +2059,26 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                     _console.WriteLine($"Error: {ex.Message}");
                 }
 
-                csvLines.Add($"\"{deformattedCampaignName}\", \"{deformattedMapName}\", {medal}, {formattedTime}");
+                csvLines.Add($"\"{EscapeCsv(deformattedCampaignName)}\", \"{EscapeCsv(deformattedMapName)}\", {medal}, {formattedTime}");
             }
         }
 
+        var finalPath = outputPath ?? Path.Combine(_defaultMapsFolder, "medals.csv");
         try
         {
-            _fs.WriteAllLines("medals.csv", csvLines);
-            _console.WriteLine($"\nExport complete! Saved to {Path.GetFullPath("medals.csv")}");
+            var dir = Path.GetDirectoryName(finalPath);
+            if (!string.IsNullOrEmpty(dir) && !_fs.DirectoryExists(dir)) _fs.CreateDirectory(dir);
+
+            await _fs.WriteAllLinesAsync(finalPath, csvLines);
+            _console.WriteLine($"\nExport complete! Saved to {Path.GetFullPath(finalPath)}");
         }
         catch (Exception ex)
         {
             _console.WriteLine($"\nError saving CSV: {ex.Message}");
         }
     }
+
+    private static string EscapeCsv(string value) => value.Replace("\"", "\"\"");
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
     {
