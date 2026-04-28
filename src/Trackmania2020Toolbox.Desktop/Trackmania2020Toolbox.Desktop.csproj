@@ -2,13 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <ApplicationIcon>Assets\toolbox.ico</ApplicationIcon>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
