@@ -63,7 +63,8 @@ public static class TrackmaniaCLI
         }
 
         var fs = new RealFileSystem();
-        var configService = new RealConfigService(fs);
+        var console = new RealConsole();
+        var configService = new RealConfigService(fs, console);
         var scriptDir = GetScriptDirectory();
         var baseConfig = await configService.LoadConfigAsync(scriptDir);
         var config = ParseArguments(args, baseConfig);
@@ -72,7 +73,6 @@ public static class TrackmaniaCLI
         using var api = new CachedTrackmaniaApi(rawApi, fs, scriptDir, config.Cache);
         var net = new RealNetworkService(HttpClient);
         var fixer = new RealMapFixer();
-        var console = new RealConsole();
         var dateTime = new RealDateTime();
 
         var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, configService);

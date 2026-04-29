@@ -220,60 +220,98 @@ public interface IConfigService
 [TomlSerializable(typeof(Config))]
 internal partial class ToolboxConfigContext : TomlSerializerContext { }
 
-public class RealConfigService(IFileSystem fs) : IConfigService
+public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConfigService, IDisposable
 {
     private readonly IFileSystem _fs = fs;
+    private readonly IConsole? _console = console;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public async Task<Config> LoadConfigAsync(string scriptDirectory)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        if (_fs.FileExists(configPath))
+        await _semaphore.WaitAsync();
+        try
         {
-            try
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            if (_fs.FileExists(configPath))
             {
-                var content = await _fs.ReadAllTextAsync(configPath);
-                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                if (config != null) return config;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
-                Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                if (ex.InnerException != null)
+                try
                 {
-                    Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                    var content = await _fs.ReadAllTextAsync(configPath);
+                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                    if (config != null) return config;
+                }
+                catch (Exception ex)
+                {
+                    Log($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+                    Log($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Log($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                    }
                 }
             }
-        }
 
-        return Config.Default;
+            return Config.Default;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public Config LoadConfig(string scriptDirectory)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        if (_fs.FileExists(configPath))
+        _semaphore.Wait();
+        try
         {
-            try
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            if (_fs.FileExists(configPath))
             {
-                var content = _fs.ReadAllText(configPath);
-                var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                if (config != null) return config;
+                try
+                {
+                    var content = _fs.ReadAllText(configPath);
+                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+                    if (config != null) return config;
+                }
+                catch (Exception ex)
+                {
+                    Log($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
-            }
-        }
 
-        return Config.Default;
+            return Config.Default;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task SaveConfigAsync(string scriptDirectory, Config config)
     {
-        var configPath = Path.Combine(scriptDirectory, "config.toml");
-        var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
-        await _fs.WriteAllTextAsync(configPath, content);
+        await _semaphore.WaitAsync();
+        try
+        {
+            var configPath = Path.Combine(scriptDirectory, "config.toml");
+            var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
+            await _fs.WriteAllTextAsync(configPath, content);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    private void Log(string message)
+    {
+        if (_console != null) _console.WriteLine(message);
+        else Console.WriteLine(message);
+    }
+
+    public void Dispose()
+    {
+        _semaphore.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 
@@ -2018,7 +2056,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                     _console.WriteLine($"Error: {ex.Message}");
                 }
 
-                csvLines.Add($"\"{deformattedCampaignName}\", \"{deformattedMapName}\", {medal}, {formattedTime}");
+                csvLines.Add($"{EscapeCsv(deformattedCampaignName)}, {EscapeCsv(deformattedMapName)}, {medal}, {formattedTime}");
             }
         }
 
@@ -2031,6 +2069,15 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         {
             _console.WriteLine($"\nError saving CSV: {ex.Message}");
         }
+    }
+
+    internal static string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
