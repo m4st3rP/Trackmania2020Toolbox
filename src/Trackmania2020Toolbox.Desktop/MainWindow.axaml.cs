@@ -61,6 +61,8 @@ public partial class MainWindow : Window
     private readonly NumericUpDown _staticCacheExpiryInput;
     private readonly NumericUpDown _dynamicCacheExpiryInput;
     private readonly NumericUpDown _highlyDynamicCacheExpiryInput;
+    private readonly ProgressBar _busyIndicator;
+    private bool _isBusy;
 
     private readonly ListBox _browserList;
     private readonly TextBox _browserPathDisplay;
@@ -108,6 +110,7 @@ public partial class MainWindow : Window
         _staticCacheExpiryInput = this.FindControl<NumericUpDown>("StaticCacheExpiryInput")!;
         _dynamicCacheExpiryInput = this.FindControl<NumericUpDown>("DynamicCacheExpiryInput")!;
         _highlyDynamicCacheExpiryInput = this.FindControl<NumericUpDown>("HighlyDynamicCacheExpiryInput")!;
+        _busyIndicator = this.FindControl<ProgressBar>("BusyIndicator")!;
 
         _browserList = this.FindControl<ListBox>("BrowserList")!;
         _browserPathDisplay = this.FindControl<TextBox>("BrowserPathDisplay")!;
@@ -137,27 +140,30 @@ public partial class MainWindow : Window
         UpdateUiFromConfig();
 
         // Wire up buttons
-        this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShorts(_weeklyShortsInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("WeeklyGrandsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyGrands(_weeklyGrandsInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("SeasonalBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleSeasonal(_seasonalInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("ToTDBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTrackOfTheDay(_toTDInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("ClubBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleClubCampaign(_clubInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxMaps(_tmxInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxPacks(_tmxPackInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxRandom(GetConfig()));
+        this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShortsAsync(_weeklyShortsInput.Text ?? "latest", GetConfig()));
+        this.FindControl<Button>("WeeklyGrandsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyGrandsAsync(_weeklyGrandsInput.Text ?? "latest", GetConfig()));
+        this.FindControl<Button>("SeasonalBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleSeasonalAsync(_seasonalInput.Text ?? "latest", GetConfig()));
+        this.FindControl<Button>("ToTDBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTrackOfTheDayAsync(_toTDInput.Text ?? "latest", GetConfig()));
+        this.FindControl<Button>("ClubBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleClubCampaignAsync(_clubInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxMapsAsync(_tmxInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxPacksAsync(_tmxPackInput.Text ?? "", GetConfig()));
+        this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxRandomAsync(GetConfig()));
         this.FindControl<Button>("TmxSearchBtn")!.Click += async (_, _) =>
         {
             string sort = (_tmxSortCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "name";
             bool desc = (_tmxOrderCombo.SelectedIndex == 1);
-            await RunTask(() => _app.HandleTmxSearch(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig()));
+            await RunTask(() => _app.HandleTmxSearchAsync(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig()));
         };
 
         this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) =>
         {
-            AppendLog("Running batch fixer..." + Environment.NewLine);
-            await _app.RunBatchFixerAsync(GetConfig());
+            await RunTask(async () =>
+            {
+                AppendLog("Running batch fixer..." + Environment.NewLine);
+                await _app.RunBatchFixerAsync(GetConfig());
+            });
         };
-        this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedals(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig()));
+        this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedalsAsync(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig()));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();
         this.FindControl<Button>("ResetSettingsBtn")!.Click += async (_, _) =>
         {
@@ -312,6 +318,8 @@ public partial class MainWindow : Window
 
     private async Task RunTask(Func<Task> task)
     {
+        if (_isBusy) return;
+        SetBusy(true);
         try
         {
             await task();
@@ -320,10 +328,16 @@ public partial class MainWindow : Window
         {
             AppendLog($"Error: {ex.Message}{Environment.NewLine}");
         }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private async Task RunTask(Func<Task<List<string>>> task)
     {
+        if (_isBusy) return;
+        SetBusy(true);
         try
         {
             var paths = await task();
@@ -340,6 +354,16 @@ public partial class MainWindow : Window
         {
             AppendLog($"Error: {ex.Message}{Environment.NewLine}");
         }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        _isBusy = busy;
+        _busyIndicator.IsVisible = busy;
     }
 
     private async Task LoadConfigAsync()
@@ -413,7 +437,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshBrowser()
+    private async Task RefreshBrowserAsync()
     {
         if (string.IsNullOrEmpty(_currentBrowserDirectory) || !_fs.DirectoryExists(_currentBrowserDirectory))
         {
@@ -428,7 +452,7 @@ public partial class MainWindow : Window
         if (_saveLastFolderCheck != null && _saveLastFolderCheck.IsChecked == true)
         {
             _config.Desktop.LastFolder = _currentBrowserDirectory;
-            _ = _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
+            await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
         }
 
         _browserPathDisplay.Text = _currentBrowserDirectory;
@@ -441,7 +465,7 @@ public partial class MainWindow : Window
             if (_saveLastSortCheck != null && _saveLastSortCheck.IsChecked == true)
             {
                 _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
-                _ = _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
+                await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
             }
 
             bool desc = _browserSortCombo.SelectedIndex == 1;
@@ -458,6 +482,8 @@ public partial class MainWindow : Window
 
         SetupWatcher();
     }
+
+    private void RefreshBrowser() => _ = RefreshBrowserAsync();
 
     private void SetupWatcher()
     {
