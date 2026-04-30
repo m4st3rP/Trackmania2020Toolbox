@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Moq;
 using Xunit;
 using Trackmania2020Toolbox;
@@ -183,5 +185,33 @@ public class ConfigServiceTests
         await _service.SaveConfigAsync("/test", config);
 
         Assert.Contains("DownloadDelayMs = 500", capturedToml);
+    }
+
+    [Fact]
+    public async Task RealConfigService_ShouldSynchronizeConcurrentAccess()
+    {
+        int concurrentCalls = 0;
+        int maxConcurrentCalls = 0;
+        var lockObj = new object();
+
+        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
+               .Returns(async () =>
+               {
+                   int current = Interlocked.Increment(ref concurrentCalls);
+                   lock (lockObj) { maxConcurrentCalls = Math.Max(maxConcurrentCalls, current); }
+                   await Task.Delay(50); // Simulate I/O
+                   Interlocked.Decrement(ref concurrentCalls);
+               });
+
+        var tasks = new List<Task>();
+        for (int i = 0; i < 10; i++)
+        {
+            tasks.Add(_service.SaveConfigAsync("/test", Config.Default));
+        }
+
+        await Task.WhenAll(tasks);
+
+        // Even with 10 tasks, the semaphore should ensure max concurrency is 1
+        Assert.Equal(1, maxConcurrentCalls);
     }
 }

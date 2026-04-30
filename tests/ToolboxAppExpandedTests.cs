@@ -289,4 +289,15 @@ public class ToolboxAppExpandedTests
         // "/" and ":" should be replaced by "_"
         _fsMock.Verify(f => f.DirectoryExists(It.Is<string>(s => s.Contains("Club_ Name") && s.Contains("Club _ Campaign_"))), Times.AtLeastOnce);
     }
+
+    [Theory]
+    [InlineData("simple", "simple")]
+    [InlineData("comma,separated", "\"comma,separated\"")]
+    [InlineData("quote\"inside", "\"quote\"\"inside\"")]
+    [InlineData("newline\ninside", "\"newline\ninside\"")]
+    public void EscapeCsv_ShouldHandleSpecialCharacters(string input, string expected)
+    {
+        var result = ToolboxApp.EscapeCsv(input);
+        Assert.Equal(expected, result);
+    }
 }

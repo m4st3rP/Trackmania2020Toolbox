@@ -221,9 +221,10 @@ public interface IConfigService
 [TomlSerializable(typeof(Config))]
 internal partial class ToolboxConfigContext : TomlSerializerContext { }
 
-public class RealConfigService(IFileSystem fs) : IConfigService
+public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConfigService, IDisposable
 {
     private readonly IFileSystem _fs = fs;
+    private readonly IConsole? _console = console;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public async Task<Config> LoadConfigAsync(string scriptDirectory)
@@ -242,11 +243,11 @@ public class RealConfigService(IFileSystem fs) : IConfigService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
-                    Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                    Log($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+                    Log($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                     if (ex.InnerException != null)
                     {
-                        Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                        Log($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
                     }
                 }
             }
@@ -275,7 +276,7 @@ public class RealConfigService(IFileSystem fs) : IConfigService
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
+                    Log($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
                 }
             }
 
@@ -300,6 +301,18 @@ public class RealConfigService(IFileSystem fs) : IConfigService
         {
             _lock.Release();
         }
+    }
+
+    private void Log(string message)
+    {
+        if (_console != null) _console.WriteLine(message);
+        else Console.WriteLine(message);
+    }
+
+    public void Dispose()
+    {
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 
@@ -2059,7 +2072,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                     _console.WriteLine($"Error: {ex.Message}");
                 }
 
-                csvLines.Add($"\"{EscapeCsv(deformattedCampaignName)}\", \"{EscapeCsv(deformattedMapName)}\", {medal}, {formattedTime}");
+                csvLines.Add($"{EscapeCsv(deformattedCampaignName)}, {EscapeCsv(deformattedMapName)}, {medal}, {formattedTime}");
             }
         }
 
@@ -2078,7 +2091,14 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
     }
 
-    private static string EscapeCsv(string value) => value.Replace("\"", "\"\"");
+    internal static string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
     {
