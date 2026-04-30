@@ -237,6 +237,9 @@
             </TabItem>
         </TabControl>
 
+        <!-- Busy Indicator -->
+        <ProgressBar Grid.Row="0" VerticalAlignment="Bottom" IsIndeterminate="True" Height="4" Name="BusyIndicator" IsVisible="False"/>
+
         <!-- Log Area -->
         <Grid Grid.Row="1" RowDefinitions="Auto, *">
             <TextBlock Grid.Row="0" Text="Log Output" Background="#333" Foreground="White" Padding="5,2"/>

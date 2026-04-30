@@ -37,7 +37,7 @@ public class ToolboxAppExpandedTests
     }
 
     [Fact]
-    public async Task HandleWeeklyGrands_ShouldFetchAndDownload()
+    public async Task HandleWeeklyGrandsAsync_ShouldFetchAndDownload()
     {
         var campaignItem = new Mock<ICampaignItem>();
         campaignItem.Setup(c => c.Id).Returns(123);
@@ -61,14 +61,14 @@ public class ToolboxAppExpandedTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--weekly-grands", "65" }, Config.Default);
-        await _app.HandleWeeklyGrands("65", config);
+        await _app.HandleWeeklyGrandsAsync("65", config);
 
         _apiMock.Verify(a => a.GetWeeklyGrandCampaignAsync(123), Times.Once);
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("65 - ")), It.IsAny<byte[]>()), Times.Once);
     }
 
     [Fact]
-    public async Task HandleClubCampaign_ShouldSearchAndDownloadByName()
+    public async Task HandleClubCampaignAsync_ShouldSearchAndDownloadByName()
     {
         var campaignItem = new Mock<ICampaignItem>();
         campaignItem.Setup(c => c.Id).Returns(456);
@@ -95,13 +95,13 @@ public class ToolboxAppExpandedTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--club-campaign", "Race" }, Config.Default);
-        await _app.HandleClubCampaign("Race", config);
+        await _app.HandleClubCampaignAsync("Race", config);
 
         _apiMock.Verify(a => a.GetClubCampaignAsync(10, 456), Times.Once);
     }
 
     [Fact]
-    public async Task HandleTmxPacks_ShouldDownloadAllMapsInPack()
+    public async Task HandleTmxPacksAsync_ShouldDownloadAllMapsInPack()
     {
         var pack = new Mock<ITmxMapPack>();
         pack.Setup(p => p.Id).Returns(1);
@@ -123,14 +123,14 @@ public class ToolboxAppExpandedTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-pack", "1" }, Config.Default);
-        await _app.HandleTmxPacks("1", config);
+        await _app.HandleTmxPacksAsync("1", config);
 
         _netMock.Verify(n => n.GetByteArrayAsync("http://tmx/gbx"), Times.Exactly(2));
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Cool Pack")), It.IsAny<byte[]>()), Times.Exactly(2));
     }
 
     [Fact]
-    public async Task HandleTmxRandom_ShouldDownloadOneMap()
+    public async Task HandleTmxRandomAsync_ShouldDownloadOneMap()
     {
         var map = new Mock<ITmxMap>();
         map.Setup(m => m.Id).Returns(777);
@@ -144,20 +144,20 @@ public class ToolboxAppExpandedTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-random" }, Config.Default);
-        await _app.HandleTmxRandom(config);
+        await _app.HandleTmxRandomAsync(config);
 
         _apiMock.Verify(a => a.GetRandomTmxMapAsync(), Times.Once);
         _netMock.Verify(n => n.GetByteArrayAsync("http://url"), Times.Once);
     }
 
     [Fact]
-    public async Task HandleTmxSearch_ShouldHandleNoResults()
+    public async Task HandleTmxSearchAsync_ShouldHandleNoResults()
     {
         _apiMock.Setup(a => a.SearchTmxMapsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
                 .ReturnsAsync(Enumerable.Empty<ITmxMap>());
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-search", "nothing" }, Config.Default);
-        await _app.HandleTmxSearch("nothing", null, "name", false, config);
+        await _app.HandleTmxSearchAsync("nothing", null, "name", false, config);
 
         _consoleMock.Verify(c => c.WriteLine("No TMX maps found."), Times.Once);
     }
@@ -197,18 +197,18 @@ public class ToolboxAppExpandedTests
     }
 
     [Fact]
-    public async Task HandleTmxMaps_ShouldHandleNotFound()
+    public async Task HandleTmxMapsAsync_ShouldHandleNotFound()
     {
         _apiMock.Setup(a => a.GetTmxMapAsync(It.IsAny<int>())).ReturnsAsync((ITmxMap?)null);
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx", "999" }, Config.Default);
 
-        await _app.HandleTmxMaps("999", config);
+        await _app.HandleTmxMapsAsync("999", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Could not find TMX map 999"))), Times.Once);
     }
 
     [Fact]
-    public async Task HandleClubCampaign_ShouldHandleNoMatches()
+    public async Task HandleClubCampaignAsync_ShouldHandleNoMatches()
     {
         var collection = new Mock<ICampaignCollection>();
         collection.Setup(c => c.Campaigns).Returns(Enumerable.Empty<ICampaignItem>());
@@ -216,13 +216,13 @@ public class ToolboxAppExpandedTests
         _apiMock.Setup(a => a.GetClubCampaignsAsync(It.IsAny<int>())).ReturnsAsync(collection.Object);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--club-campaign", "NonExistent" }, Config.Default);
-        await _app.HandleClubCampaign("NonExistent", config);
+        await _app.HandleClubCampaignAsync("NonExistent", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("No matching club campaigns found"))), Times.Once);
     }
 
     [Fact]
-    public async Task HandleSeasonal_ShouldHandleNoMatches()
+    public async Task HandleSeasonalAsync_ShouldHandleNoMatches()
     {
         var collection = new Mock<ICampaignCollection>();
         collection.Setup(c => c.Campaigns).Returns(Enumerable.Empty<ICampaignItem>());
@@ -230,13 +230,13 @@ public class ToolboxAppExpandedTests
         _apiMock.Setup(a => a.GetSeasonalCampaignsAsync(It.IsAny<int>())).ReturnsAsync(collection.Object);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "NotFound" }, Config.Default);
-        await _app.HandleSeasonal("NotFound", config);
+        await _app.HandleSeasonalAsync("NotFound", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Could not find seasonal campaign matching 'NotFound'"))), Times.Once);
     }
 
     [Fact]
-    public async Task DownloadAndFixMaps_ShouldProcessMapDownloadRecords()
+    public async Task DownloadAndFixMapsAsync_ShouldProcessMapDownloadRecords()
     {
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[5]);
@@ -249,7 +249,7 @@ public class ToolboxAppExpandedTests
         };
 
         var config = Config.Default;
-        var result = await _app.DownloadAndFixMaps(maps, "/test/download", config);
+        var result = await new MapDownloader(_fsMock.Object, _netMock.Object, _fixerMock.Object, _consoleMock.Object).DownloadAndFixMapsAsync(maps, "/test/download", config);
 
         Assert.Equal(2, result.Count);
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("P1-FileA")), It.IsAny<byte[]>()), Times.Once);
@@ -284,7 +284,7 @@ public class ToolboxAppExpandedTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
 
         var config = TrackmaniaCLI.ParseArguments(["--club-campaign", "10/456"], Config.Default);
-        await _app.HandleClubCampaign("10/456", config);
+        await _app.HandleClubCampaignAsync("10/456", config);
 
         // "/" and ":" should be replaced by "_"
         _fsMock.Verify(f => f.DirectoryExists(It.Is<string>(s => s.Contains("Club_ Name") && s.Contains("Club _ Campaign_"))), Times.AtLeastOnce);

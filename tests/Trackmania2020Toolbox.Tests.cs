@@ -55,28 +55,28 @@ public class ToolboxTests
     [Fact]
     public void ParseNumbers_ShouldParseSingleValue()
     {
-        var result = _app.ParseNumbers("5");
+        var result = new InputParser(_consoleMock.Object).ParseNumbers("5");
         Assert.Equal(new List<int> { 5 }, result);
     }
 
     [Fact]
     public void ParseNumbers_ShouldParseCommaSeparated()
     {
-        var result = _app.ParseNumbers("1,3,5");
+        var result = new InputParser(_consoleMock.Object).ParseNumbers("1,3,5");
         Assert.Equal(new List<int> { 1, 3, 5 }, result);
     }
 
     [Fact]
     public void ParseNumbers_ShouldParseRange()
     {
-        var result = _app.ParseNumbers("1-3");
+        var result = new InputParser(_consoleMock.Object).ParseNumbers("1-3");
         Assert.Equal(new List<int> { 1, 2, 3 }, result);
     }
 
     [Fact]
     public void ParseNumbers_ShouldHandleMixed()
     {
-        var result = _app.ParseNumbers("1, 5-7, 10");
+        var result = new InputParser(_consoleMock.Object).ParseNumbers("1, 5-7, 10");
         Assert.Equal(new List<int> { 1, 5, 6, 7, 10 }, result);
     }
 
@@ -90,7 +90,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task HandleWeeklyShorts_ShouldFilterByWeekNumberWithWordBoundary()
+    public async Task HandleWeeklyShortsAsync_ShouldFilterByWeekNumberWithWordBoundary()
     {
         var campaign1 = new Mock<ICampaignItem>();
         campaign1.Setup(c => c.Id).Returns(6);
@@ -112,14 +112,14 @@ public class ToolboxTests
 
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>(), Config.Default);
 
-        await _app.HandleWeeklyShorts("6", config);
+        await _app.HandleWeeklyShortsAsync("6", config);
 
         _apiMock.Verify(a => a.GetWeeklyShortCampaignAsync(6), Times.Once);
         _apiMock.Verify(a => a.GetWeeklyShortCampaignAsync(60), Times.Never);
     }
 
     [Fact]
-    public async Task HandleTrackOfTheDay_ShouldFallbackToYesterdayIfLatestMissingBefore17UTC()
+    public async Task HandleTrackOfTheDayAsync_ShouldFallbackToYesterdayIfLatestMissingBefore17UTC()
     {
         var now = new DateTime(2024, 10, 15, 10, 0, 0, DateTimeKind.Utc);
         _dateTimeMock.Setup(d => d.UtcNow).Returns(now);
@@ -142,13 +142,13 @@ public class ToolboxTests
         var config = TrackmaniaCLI.ParseArguments(new[] { "--force" }, Config.Default);
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
 
-        await _app.HandleTrackOfTheDay("latest", config);
+        await _app.HandleTrackOfTheDayAsync("latest", config);
 
         _netMock.Verify(n => n.GetByteArrayAsync("http://example.com/map.gbx"), Times.Once);
     }
 
     [Fact]
-    public async Task DownloadAndFixMaps_ShouldDeformatNamesAndApplyPrefixes()
+    public async Task DownloadAndFixMapsAsync_ShouldDeformatNamesAndApplyPrefixes()
     {
         var mapMock = new Mock<IMap>();
         mapMock.Setup(m => m.Name).Returns("$f00Formatted Name");
@@ -197,7 +197,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task HandleTrackOfTheDay_ShouldFallbackToPreviousMonthIfLatestMissingOnFirstDay()
+    public async Task HandleTrackOfTheDayAsync_ShouldFallbackToPreviousMonthIfLatestMissingOnFirstDay()
     {
         var now = new DateTime(2024, 11, 1, 10, 0, 0, DateTimeKind.Utc);
         _dateTimeMock.Setup(d => d.UtcNow).Returns(now);
@@ -226,7 +226,7 @@ public class ToolboxTests
         var config = TrackmaniaCLI.ParseArguments(new[] { "--force" }, Config.Default);
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
 
-        await _app.HandleTrackOfTheDay("latest", config);
+        await _app.HandleTrackOfTheDayAsync("latest", config);
 
         _netMock.Verify(n => n.GetByteArrayAsync("http://example.com/lastday.gbx"), Times.Once);
     }
@@ -234,12 +234,12 @@ public class ToolboxTests
     [Fact]
     public void ParseNumbers_ShouldHandleInvertedRange()
     {
-        var result = _app.ParseNumbers("5-3");
+        var result = new InputParser(_consoleMock.Object).ParseNumbers("5-3");
         Assert.Equal(new List<int> { 3, 4, 5 }, result);
     }
 
     [Fact]
-    public async Task DownloadAndFixMaps_ShouldSanitizeFilenames()
+    public async Task DownloadAndFixMapsAsync_ShouldSanitizeFilenames()
     {
         var mapMock = new Mock<IMap>();
         mapMock.Setup(m => m.Name).Returns("Invalid/Name*?");
@@ -265,14 +265,14 @@ public class ToolboxTests
         _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
 
-        await _app.HandleSeasonal("Test Campaign", config);
+        await _app.HandleSeasonalAsync("Test Campaign", config);
 
         // "/" and "*" and "?" should be replaced by "_"
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Invalid_Name__")), It.IsAny<byte[]>()), Times.Once);
     }
 
     [Fact]
-    public async Task HandleSeasonal_ShouldDeformatCampaignNameInOutput()
+    public async Task HandleSeasonalAsync_ShouldDeformatCampaignNameInOutput()
     {
         var campaignItemMock = new Mock<ICampaignItem>();
         campaignItemMock.Setup(c => c.Id).Returns(1);
@@ -289,13 +289,13 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaignMock.Object);
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "latest" }, Config.Default);
-        await _app.HandleSeasonal("Formatted", config);
+        await _app.HandleSeasonalAsync("Formatted", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Found: Formatted Campaign"))), Times.Once);
     }
 
     [Fact]
-    public async Task HandleExportCampaignMedals_ShouldCalculateMedalsCorrectly()
+    public async Task HandleExportCampaignMedalsAsync_ShouldCalculateMedalsCorrectly()
     {
         string playerId = Guid.NewGuid().ToString();
 
@@ -332,7 +332,7 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ReturnsAsync(leaderboardMock.Object);
 
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>(), Config.Default);
-        await _app.HandleExportCampaignMedals(playerId, "Seasonal", config);
+        await _app.HandleExportCampaignMedalsAsync(playerId, "Seasonal", config);
 
         _fsMock.Verify(f => f.WriteAllLinesAsync(It.Is<string>(s => s.EndsWith("medals.csv")), It.Is<IEnumerable<string>>(lines =>
             lines.Any(l => l.Contains("Medal: 3") || l.Contains(", 3,")) // Medal 3 is Gold
@@ -340,7 +340,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task DownloadAndFixMaps_ShouldSkipIfFileExists()
+    public async Task DownloadAndFixMapsAsync_ShouldSkipIfFileExists()
     {
         var mapMock = new Mock<IMap>();
         mapMock.Setup(m => m.Name).Returns("Existing Map");
@@ -366,14 +366,14 @@ public class ToolboxTests
 
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>(), Config.Default); // No --force
 
-        await _app.HandleSeasonal("Test Campaign", config);
+        await _app.HandleSeasonalAsync("Test Campaign", config);
 
         _netMock.Verify(n => n.GetByteArrayAsync(It.IsAny<string>()), Times.Never);
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Skipped (already exists)"))), Times.Once);
     }
 
     [Fact]
-    public async Task HandleClubCampaign_ShouldHandleMultipleMatchesNonInteractively()
+    public async Task HandleClubCampaignAsync_ShouldHandleMultipleMatchesNonInteractively()
     {
         var campaign1 = new Mock<ICampaignItem>();
         campaign1.Setup(c => c.Id).Returns(1);
@@ -397,7 +397,7 @@ public class ToolboxTests
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--non-interactive" }, Config.Default);
 
-        await _app.HandleClubCampaign("Campaign", config);
+        await _app.HandleClubCampaignAsync("Campaign", config);
 
         // Should have picked the first match
         _apiMock.Verify(a => a.GetClubCampaignAsync(100, 1), Times.Once);
@@ -405,7 +405,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task HandleExportCampaignMedals_ShouldCatchApiExceptions()
+    public async Task HandleExportCampaignMedalsAsync_ShouldCatchApiExceptions()
     {
         string playerId = Guid.NewGuid().ToString();
 
@@ -433,14 +433,14 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ThrowsAsync(new HttpRequestException("API Error"));
 
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>(), Config.Default);
-        await _app.HandleExportCampaignMedals(playerId, "Seasonal", config);
+        await _app.HandleExportCampaignMedalsAsync(playerId, "Seasonal", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Network error"))), Times.Once);
         _fsMock.Verify(f => f.WriteAllLinesAsync(It.Is<string>(s => s.EndsWith("medals.csv")), It.IsAny<IEnumerable<string>>()), Times.Once);
     }
 
     [Fact]
-    public async Task HandleTrackOfTheDay_ShouldHandleRangeAndMonthFormats()
+    public async Task HandleTrackOfTheDayAsync_ShouldHandleRangeAndMonthFormats()
     {
         _dateTimeMock.Setup(d => d.UtcNow).Returns(new DateTime(2024, 10, 15));
 
@@ -463,13 +463,13 @@ public class ToolboxTests
         var config = TrackmaniaCLI.ParseArguments(Array.Empty<string>(), Config.Default);
 
         // Range: 2024.10.01-02
-        await _app.HandleTrackOfTheDay("2024.10.01-02", config);
+        await _app.HandleTrackOfTheDayAsync("2024.10.01-02", config);
 
         _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("Processing 2 maps"))), Times.Once);
     }
 
     [Fact]
-    public async Task HandleTmxMaps_ShouldUseCorrectDownloadUrl()
+    public async Task HandleTmxMapsAsync_ShouldUseCorrectDownloadUrl()
     {
         var mapMock = new Mock<ITmxMap>();
         mapMock.Setup(m => m.Id).Returns(18101);
@@ -528,7 +528,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task HandleClubCampaign_ShouldLimitSearchPages()
+    public async Task HandleClubCampaignAsync_ShouldLimitSearchPages()
     {
         var collectionMock = new Mock<ICampaignCollection>();
         collectionMock.Setup(c => c.Campaigns).Returns(Enumerable.Empty<ICampaignItem>());
@@ -551,7 +551,7 @@ public class ToolboxTests
     [InlineData("  MapName.Map.Gbx  ", "MapName.Map.Gbx")]
     [InlineData("MapName.MAP.GBX", "MapName.Map.Gbx")]
     [InlineData("MapName.GBX", "MapName.Gbx")]
-    public async Task DownloadAndFixMaps_ShouldCorrectlyNormalizeExtensions(string inputName, string expectedFileName)
+    public async Task DownloadAndFixMapsAsync_ShouldCorrectlyNormalizeExtensions(string inputName, string expectedFileName)
     {
         _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
@@ -561,7 +561,7 @@ public class ToolboxTests
         IEnumerable<MapDownloadRecord> maps =
             new MapDownloadRecord[] { new MapDownloadRecord(inputName, null, "http://url", null) };
 
-        await _app.DownloadAndFixMaps(maps, "dir", config);
+        await new MapDownloader(_fsMock.Object, _netMock.Object, _fixerMock.Object, _consoleMock.Object).DownloadAndFixMapsAsync(maps, "dir", config);
 
         _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.EndsWith(expectedFileName)), It.IsAny<byte[]>()), Times.Once);
     }
@@ -569,7 +569,7 @@ public class ToolboxTests
     [Fact]
     public void ParseMapRanges_ShouldUseUnifiedHelper()
     {
-        var result = _app.ParseMapRanges("1-3, 5, 10-12");
+        var result = new InputParser(_consoleMock.Object).ParseMapRanges("1-3, 5, 10-12");
         Assert.Equal(3, result.Count);
         Assert.Equal(1, result[0].Start.Campaign);
         Assert.Equal(3, result[0].End.Campaign);
@@ -580,7 +580,7 @@ public class ToolboxTests
     }
 
     [Fact]
-    public async Task HandleExportCampaignMedals_ShouldEscapeQuotesInCsv()
+    public async Task HandleExportCampaignMedalsAsync_ShouldEscapeQuotesInCsv()
     {
         string playerId = Guid.NewGuid().ToString();
 
@@ -610,7 +610,7 @@ public class ToolboxTests
         _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ReturnsAsync(leaderboardMock.Object);
 
         var config = Config.Default;
-        await _app.HandleExportCampaignMedals(playerId, null, config);
+        await _app.HandleExportCampaignMedalsAsync(playerId, null, config);
 
         // Expected: ""Campaign ""with quotes"""", ""Track ""name""""
         _fsMock.Verify(f => f.WriteAllLinesAsync(It.IsAny<string>(), It.Is<IEnumerable<string>>(lines =>
@@ -691,7 +691,7 @@ public class FlagRefactorTests
     [InlineData("21.3-23.1", 21, 3, 23, 1)]
     public void ParseMapRanges_ShouldHandleFormats(string input, int startC, int? startM, int endC, int? endM)
     {
-        var result = _app.ParseMapRanges(input);
+        var result = new InputParser(new Mock<IConsole>().Object).ParseMapRanges(input);
         Assert.Single(result);
         Assert.Equal(startC, result[0].Start.Campaign);
         Assert.Equal(startM, result[0].Start.Map);
@@ -707,7 +707,7 @@ public class FlagRefactorTests
     [InlineData("Winter 2026.24-Spring 2026.3", 2026, 1, 24, 2026, 2, 3)]
     public void ParseSeasonalRanges_ShouldHandleFormats(string input, int startY, int startO, int? startM, int endY, int endO, int? endM)
     {
-        var result = _app.ParseSeasonalRanges(input);
+        var result = new InputParser(new Mock<IConsole>().Object).ParseSeasonalRanges(input);
         Assert.Single(result);
         Assert.Equal(startY, result[0].Start.Year);
         Assert.Equal(startO, result[0].Start.SeasonOrder);
@@ -723,42 +723,42 @@ public class FlagRefactorTests
         var now = new DateTime(2025, 1, 1);
 
         // yyyy
-        var r = _app.ParseToTdRanges("2024", now);
+        var r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024", now);
         Assert.Equal(new DateTime(2024, 1, 1), r[0].Start);
         Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
 
         // yyyy.mm
-        r = _app.ParseToTdRanges("2024.02", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.02", now);
         Assert.Equal(new DateTime(2024, 2, 1), r[0].Start);
         Assert.Equal(new DateTime(2024, 2, 29), r[0].End);
 
         // yyyy.mm.dd
-        r = _app.ParseToTdRanges("2024.02.15", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.02.15", now);
         Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
         Assert.Equal(new DateTime(2024, 2, 15), r[0].End);
 
         // yyyy.mm.dd-dd
-        r = _app.ParseToTdRanges("2024.02.15-20", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.02.15-20", now);
         Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
         Assert.Equal(new DateTime(2024, 2, 20), r[0].End);
 
         // yyyy.mm.dd-mm.dd
-        r = _app.ParseToTdRanges("2024.02.15-03.10", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.02.15-03.10", now);
         Assert.Equal(new DateTime(2024, 2, 15), r[0].Start);
         Assert.Equal(new DateTime(2024, 3, 10), r[0].End);
 
         // yyyy.mm.dd-yyyy.mm.dd
-        r = _app.ParseToTdRanges("2024.12.30-2025.01.02", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.12.30-2025.01.02", now);
         Assert.Equal(new DateTime(2024, 12, 30), r[0].Start);
         Assert.Equal(new DateTime(2025, 1, 2), r[0].End);
 
         // yyyy.mm-yyyy.mm
-        r = _app.ParseToTdRanges("2024.11-2024.12", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.11-2024.12", now);
         Assert.Equal(new DateTime(2024, 11, 1), r[0].Start);
         Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
 
         // yyyy-yyyy
-        r = _app.ParseToTdRanges("2023-2024", now);
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2023-2024", now);
         Assert.Equal(new DateTime(2023, 1, 1), r[0].Start);
         Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
     }
