@@ -346,7 +346,7 @@ public partial class MainWindow : Window
                 RefreshBrowser();
                 if (_playAfterDownloadCheck.IsChecked ?? false)
                 {
-                    _app.LaunchGame(paths);
+                    await _app.LaunchGameAsync(paths, GetConfig());
                 }
             }
         }
@@ -512,7 +512,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void HandleBrowserAction()
+    private async void HandleBrowserAction()
     {
         if (_browserList.SelectedItem is BrowserItem item)
         {
@@ -523,16 +523,16 @@ public partial class MainWindow : Window
             }
             else
             {
-                _app.LaunchGame([item.FullPath]);
+                await RunTask(() => _app.LaunchGameAsync([item.FullPath], GetConfig()));
             }
         }
     }
 
-    private void PlaySelectedMap()
+    private async void PlaySelectedMap()
     {
         if (_browserList.SelectedItem is BrowserItem item && !item.IsDirectory)
         {
-            _app.LaunchGame([item.FullPath]);
+            await RunTask(() => _app.LaunchGameAsync([item.FullPath], GetConfig()));
         }
     }
 
