@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PublishAot Condition="'$(IsTestProject)' != 'true'">true</PublishAot>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -10,6 +11,14 @@
     <ControlFlowGuard>Guard</ControlFlowGuard>
     <DebugType>none</DebugType>
     <StripSymbols>true</StripSymbols>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Feature switches to reduce size -->
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(PublishAot)' == 'true'">
@@ -17,5 +26,6 @@
     <IlcTrimMetadata>true</IlcTrimMetadata>
     <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
     <StackTraceSupport>false</StackTraceSupport>
+    <TrimMode>full</TrimMode>
   </PropertyGroup>
 </Project>
