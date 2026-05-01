@@ -7,14 +7,15 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox;
 
-public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
+public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConfigService, IDisposable
 {
     private readonly IFileSystem _fs = fs;
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly IConsole? _console = console;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public async Task<Config> LoadConfigAsync(string scriptDirectory)
     {
-        await _lock.WaitAsync();
+        await _semaphore.WaitAsync();
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
@@ -28,11 +29,11 @@ public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
-                    Console.WriteLine($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                    Log($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+                    Log($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                     if (ex.InnerException != null)
                     {
-                        Console.WriteLine($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+                        Log($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
                     }
                 }
             }
@@ -41,13 +42,13 @@ public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
         }
         finally
         {
-            _lock.Release();
+            _semaphore.Release();
         }
     }
 
     public Config LoadConfig(string scriptDirectory)
     {
-        _lock.Wait();
+        _semaphore.Wait();
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
@@ -61,7 +62,7 @@ public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
+                    Log($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
                 }
             }
 
@@ -69,13 +70,13 @@ public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
         }
         finally
         {
-            _lock.Release();
+            _semaphore.Release();
         }
     }
 
     public async Task SaveConfigAsync(string scriptDirectory, Config config)
     {
-        await _lock.WaitAsync();
+        await _semaphore.WaitAsync();
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
@@ -84,13 +85,19 @@ public class RealConfigService(IFileSystem fs) : IConfigService, IDisposable
         }
         finally
         {
-            _lock.Release();
+            _semaphore.Release();
         }
+    }
+
+    private void Log(string message)
+    {
+        if (_console != null) _console.WriteLine(message);
+        else Console.WriteLine(message);
     }
 
     public void Dispose()
     {
-        _lock.Dispose();
+        _semaphore.Dispose();
         GC.SuppressFinalize(this);
     }
 }

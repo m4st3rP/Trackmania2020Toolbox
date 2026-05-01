@@ -837,7 +837,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                     _console.WriteLine($"Error: {ex.Message}");
                 }
 
-                csvLines.Add($"\"{EscapeCsv(deformattedCampaignName)}\", \"{EscapeCsv(deformattedMapName)}\", {medal}, {formattedTime}");
+                csvLines.Add($"{EscapeCsv(deformattedCampaignName)}, {EscapeCsv(deformattedMapName)}, {medal}, {formattedTime}");
             }
         }
 
@@ -856,7 +856,14 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
     }
 
-    private static string EscapeCsv(string value) => value.Replace("\"", "\"\"");
+    internal static string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
     {
