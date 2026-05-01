@@ -120,7 +120,7 @@ public partial class MainWindow : Window
         var console = new LogConsole(AppendLog, selectionFunc: SelectItemAsync);
         _fs = new RealFileSystem();
         var scriptDir = TrackmaniaCLI.GetScriptDirectory();
-        _configService = new RealConfigService(_fs);
+        _configService = new RealConfigService(_fs, console);
         _config = _configService.LoadConfig(scriptDir);
 
         var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
