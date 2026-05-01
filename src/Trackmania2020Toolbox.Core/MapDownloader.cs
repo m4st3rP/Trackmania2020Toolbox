@@ -10,12 +10,6 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
     private readonly IMapFixer _fixer = fixer;
     private readonly IConsole _console = console;
 
-    private static readonly SearchValues<char> InvalidFileNameChars = SearchValues.Create(
-        Path.GetInvalidFileNameChars()
-        .Union(['/', '\\', ':', '*', '?', '\"', '<', '>', '|'])
-        .Distinct()
-        .ToArray());
-
     public async Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config)
     {
         if (!_fs.DirectoryExists(downloadDir)) _fs.CreateDirectory(downloadDir);
@@ -51,7 +45,7 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
             }
             fileName += extension;
 
-            fileName = SanitizeString(fileName);
+            fileName = PathUtilities.SanitizeString(fileName);
 
             if (!string.IsNullOrEmpty(map.Prefix)) fileName = map.Prefix + fileName;
 
@@ -89,18 +83,5 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
             }
         }
         return processedPaths;
-    }
-
-    private static string SanitizeString(string input)
-    {
-        return string.Create(input.Length, input, (span, state) =>
-        {
-            state.AsSpan().CopyTo(span);
-            int index;
-            while ((index = span.IndexOfAny(InvalidFileNameChars)) != -1)
-            {
-                span[index] = '_';
-            }
-        });
     }
 }
