@@ -297,7 +297,47 @@ public class ToolboxAppExpandedTests
     [InlineData("newline\ninside", "\"newline\ninside\"")]
     public void EscapeCsv_ShouldHandleSpecialCharacters(string input, string expected)
     {
-        var result = ToolboxApp.EscapeCsv(input);
+        var result = CsvUtilities.EscapeCsv(input);
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public async Task HandleExportCampaignMedalsAsync_ShouldProduceCompactCsv()
+    {
+        string playerId = Guid.NewGuid().ToString();
+
+        var campaignItemMock = new Mock<ICampaignItem>();
+        campaignItemMock.Setup(c => c.Id).Returns(1);
+        campaignItemMock.Setup(c => c.Name).Returns("Campaign");
+
+        var collectionMock = new Mock<ICampaignCollection>();
+        collectionMock.Setup(c => c.Campaigns).Returns(new[] { campaignItemMock.Object });
+        collectionMock.Setup(c => c.PageCount).Returns(1);
+
+        _apiMock.Setup(a => a.GetSeasonalCampaignsAsync(0)).ReturnsAsync(collectionMock.Object);
+
+        var mapMock = new Mock<IMap>();
+        mapMock.Setup(m => m.Name).Returns("Track");
+        mapMock.Setup(m => m.MapUid).Returns("uid1");
+
+        var campaignMock = new Mock<ICampaign>();
+        campaignMock.Setup(c => c.Playlist).Returns(new[] { mapMock.Object });
+        campaignMock.Setup(c => c.Name).Returns("Campaign");
+
+        _apiMock.Setup(a => a.GetSeasonalCampaignAsync(1)).ReturnsAsync(campaignMock.Object);
+
+        var leaderboardMock = new Mock<ILeaderboard>();
+        leaderboardMock.Setup(l => l.Tops).Returns(Enumerable.Empty<IRecord>());
+
+        _apiMock.Setup(a => a.GetLeaderboardAsync("uid1", playerId)).ReturnsAsync(leaderboardMock.Object);
+
+        var config = Config.Default;
+        await _app.HandleExportCampaignMedalsAsync(playerId, null, config);
+
+        // Verify the header and the line have no spaces after commas
+        _fsMock.Verify(f => f.WriteAllLinesAsync(It.IsAny<string>(), It.Is<IEnumerable<string>>(lines =>
+            lines.Contains("Campaign Name,Track Name,Medal,Best Time") &&
+            lines.Any(l => l.StartsWith("Campaign,Track,0,"))
+        )), Times.Once);
     }
 }

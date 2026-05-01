@@ -367,7 +367,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) return downloadedPaths;
 
-            var seasonalFolderName = SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
+            var seasonalFolderName = PathUtilities.SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
         }
@@ -398,7 +398,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
             if (!mapsToDownload.Any()) continue;
 
-            var seasonalFolderName = SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
+            var seasonalFolderName = PathUtilities.SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(
                 mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, $"{(m.index + 1):D2} - ")),
@@ -520,8 +520,8 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         var fullCampaign = await _api.GetClubCampaignAsync(clubId, campaignId);
         if (fullCampaign?.Playlist == null) return [];
 
-        var clubPart = SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString());
-        var campaignPart = SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString());
+        var clubPart = PathUtilities.SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString());
+        var campaignPart = PathUtilities.SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString());
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Clubs", clubPart, campaignPart);
         return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
@@ -570,7 +570,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var deformattedPackName = TextFormatter.Deformat(pack.Name);
             _console.WriteLine($"Found Map Pack: {deformattedPackName}");
             var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
-            var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", SanitizeFolderName(deformattedPackName));
+            var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", PathUtilities.SanitizeFolderName(deformattedPackName));
 
             downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(maps.Select((m, i) => new MapDownloadRecord(m.Name, null, _api.GetTmxMapUrl(m.Id), $"{(i + 1):D2} - ")), downloadDir, config));
         }
@@ -741,23 +741,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         return all;
     }
 
-    private static string SanitizeFolderName(string folderName) => SanitizeString(folderName).Trim();
-
-    private static string SanitizeString(string input)
-    {
-        var invalidChars = Path.GetInvalidFileNameChars().Union(['/', '\\', ':', '*', '?', '\"', '<', '>', '|']).Distinct().ToArray();
-        var searchValues = System.Buffers.SearchValues.Create(invalidChars);
-        return string.Create(input.Length, input, (span, state) =>
-        {
-            state.AsSpan().CopyTo(span);
-            int index;
-            while ((index = span.IndexOfAny(searchValues)) != -1)
-            {
-                span[index] = '_';
-            }
-        });
-    }
-
     public async Task HandleExportCampaignMedalsAsync(string playerId, string? campaignNameFilter, Config config, string? outputPath = null)
     {
         if (!Guid.TryParse(playerId, out var accountId))
@@ -785,7 +768,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         campaignsToProcess = [.. campaignsToProcess.OrderBy(c => c.Id)];
 
-        List<string> csvLines = ["Campaign Name, Track Name, Medal, Best Time"];
+        List<string> csvLines = ["Campaign Name,Track Name,Medal,Best Time"];
 
         for (int i = 0; i < campaignsToProcess.Count; i++)
         {
@@ -847,7 +830,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                     _console.WriteLine($"Error: {ex.Message}");
                 }
 
-                csvLines.Add($"{EscapeCsv(deformattedCampaignName)}, {EscapeCsv(deformattedMapName)}, {medal}, {formattedTime}");
+                csvLines.Add($"{CsvUtilities.EscapeCsv(deformattedCampaignName)},{CsvUtilities.EscapeCsv(deformattedMapName)},{medal},{formattedTime}");
             }
         }
 
@@ -864,15 +847,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         {
             _console.WriteLine($"\nError saving CSV: {ex.Message}");
         }
-    }
-
-    internal static string EscapeCsv(string value)
-    {
-        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
-        {
-            return "\"" + value.Replace("\"", "\"\"") + "\"";
-        }
-        return value;
     }
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)

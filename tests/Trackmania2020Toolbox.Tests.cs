@@ -335,7 +335,7 @@ public class ToolboxTests
         await _app.HandleExportCampaignMedalsAsync(playerId, "Seasonal", config);
 
         _fsMock.Verify(f => f.WriteAllLinesAsync(It.Is<string>(s => s.EndsWith("medals.csv")), It.Is<IEnumerable<string>>(lines =>
-            lines.Any(l => l.Contains("Medal: 3") || l.Contains(", 3,")) // Medal 3 is Gold
+            lines.Any(l => l.Contains(",3,")) // Medal 3 is Gold
         )), Times.Once);
     }
 
