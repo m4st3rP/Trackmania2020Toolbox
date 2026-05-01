@@ -117,7 +117,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         if (appCfg.Play)
         {
-            LaunchGame(mapPaths);
+            await LaunchGameAsync(mapPaths, config);
         }
     }
 
@@ -136,13 +136,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
     }
 
-    private string? GetGamePath()
-    {
-        var config = _configService.LoadConfig(_scriptDirectory);
-        return config.App.SetGamePath;
-    }
-
-    public void LaunchGame(List<string> mapPaths)
+    public async Task LaunchGameAsync(List<string> mapPaths, Config? config = null)
     {
         if (mapPaths.Count == 0)
         {
@@ -150,7 +144,8 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             return;
         }
 
-        var gamePath = GetGamePath();
+        config ??= await _configService.LoadConfigAsync(_scriptDirectory);
+        var gamePath = config.App.SetGamePath;
         if (string.IsNullOrEmpty(gamePath))
         {
             _console.WriteLine("Error: Trackmania.exe path not set.");
@@ -687,6 +682,21 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         if (!ranges.Any()) return [];
 
+        // Check for API-to-System month drift
+        int monthDrift = 0;
+        try
+        {
+            var currentMonthFromApi = await _api.GetTrackOfTheDaysAsync(0);
+            if (currentMonthFromApi != null)
+            {
+                monthDrift = (now.Year - currentMonthFromApi.Year) * 12 + (now.Month - currentMonthFromApi.Month);
+            }
+        }
+        catch (Exception ex)
+        {
+            _console.WriteLine($"Warning: Could not determine API month drift: {ex.Message}");
+        }
+
         List<string> downloadedPaths = [];
         List<DateTime> allDaysToDownload = [];
         foreach (var range in ranges)
@@ -701,7 +711,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         foreach (var monthGroup in daysByMonth)
         {
-            int monthOffset = (now.Year - monthGroup.Key.Year) * 12 + (now.Month - monthGroup.Key.Month);
+            int monthOffset = (now.Year - monthGroup.Key.Year) * 12 + (now.Month - monthGroup.Key.Month) - monthDrift;
             var response = await _api.GetTrackOfTheDaysAsync(monthOffset);
             if (response?.Days == null) continue;
 

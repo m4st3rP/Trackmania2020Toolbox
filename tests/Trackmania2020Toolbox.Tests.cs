@@ -655,6 +655,89 @@ public class ToolboxTests
         fs.Verify(f => f.ReadAllTextAsync(It.IsAny<string>()), Times.Once);
         fs.Verify(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
+
+    [Fact]
+    public async Task LaunchGameAsync_ShouldUseProvidedConfigAndNotReloadFromDisk()
+    {
+        var config = Config.Default;
+        config.App.SetGamePath = "/test/game.exe";
+        var mapPaths = new List<string> { "/test/map.gbx" };
+
+        _fsMock.Setup(f => f.FileExists("/test/game.exe")).Returns(true);
+        _fsMock.Setup(f => f.FileExists("/test/map.gbx")).Returns(true);
+
+        var configServiceMock = new Mock<IConfigService>();
+        var appWithMockConfig = new ToolboxApp(
+            _apiMock.Object,
+            _fsMock.Object,
+            _netMock.Object,
+            _fixerMock.Object,
+            _consoleMock.Object,
+            _dateTimeMock.Object,
+            "/test",
+            configServiceMock.Object
+        );
+
+        await appWithMockConfig.LaunchGameAsync(mapPaths, config);
+
+        // Should NOT call LoadConfigAsync because config was provided
+        configServiceMock.Verify(s => s.LoadConfigAsync(It.IsAny<string>()), Times.Never);
+        // Should NOT call LoadConfig because it's sync and we want to avoid it
+        configServiceMock.Verify(s => s.LoadConfig(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleTrackOfTheDayAsync_ShouldCorrectlyCalculateOffsetWhenApiIsDelayed()
+    {
+        // System is already in May
+        var now = new DateTime(2024, 5, 1, 10, 0, 0, DateTimeKind.Utc);
+        _dateTimeMock.Setup(d => d.UtcNow).Returns(now);
+
+        // But API still returns April for offset 0
+        var aprilCollection = new Mock<ITrackOfTheDayCollection>();
+        aprilCollection.Setup(c => c.Year).Returns(2024);
+        aprilCollection.Setup(c => c.Month).Returns(4);
+        aprilCollection.Setup(c => c.Days).Returns(new[] {
+            CreateMockTotdDay(29, "April 29 Map", "http://example.com/april29.gbx")
+        });
+
+        var marchCollection = new Mock<ITrackOfTheDayCollection>();
+        marchCollection.Setup(c => c.Year).Returns(2024);
+        marchCollection.Setup(c => c.Month).Returns(3);
+        marchCollection.Setup(c => c.Days).Returns(new[] {
+            CreateMockTotdDay(29, "March 29 Map", "http://example.com/march29.gbx")
+        });
+
+        // Current implementation would use monthOffset = 1 for April,
+        // but if offset 0 is April, offset 1 is March.
+        _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(aprilCollection.Object);
+        _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(1)).ReturnsAsync(marchCollection.Object);
+
+        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[0]);
+        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+
+        var config = TrackmaniaCLI.ParseArguments(new[] { "--force" }, Config.Default);
+
+        // Request April 29th
+        await _app.HandleTrackOfTheDayAsync("2024.04.29", config);
+
+        // We want to ensure it downloads April 29, not March 29.
+        // In the bugged state, it would call GetTrackOfTheDaysAsync(1) and get March.
+        // To fix it, it should realize offset 0 is April and use offset 0 instead.
+        _netMock.Verify(n => n.GetByteArrayAsync("http://example.com/april29.gbx"), Times.Once);
+        _netMock.Verify(n => n.GetByteArrayAsync("http://example.com/march29.gbx"), Times.Never);
+    }
+
+    private ITrackOfTheDayDay CreateMockTotdDay(int day, string name, string url)
+    {
+        var map = new Mock<ITrackmaniaMap>();
+        map.Setup(m => m.Name).Returns(name);
+        map.Setup(m => m.FileUrl).Returns(url);
+        var totdDay = new Mock<ITrackOfTheDayDay>();
+        totdDay.Setup(d => d.MonthDay).Returns(day);
+        totdDay.Setup(d => d.Map).Returns(map.Object);
+        return totdDay.Object;
+    }
 }
 
 public class RuntimeTests
