@@ -66,16 +66,16 @@ public static class TrackmaniaCLI
 
         var fs = new RealFileSystem();
         var console = new RealConsole();
-        var configService = new RealConfigService(fs, console);
         var scriptDir = GetScriptDirectory();
+        var dateTime = new RealDateTime();
+        using var configService = new RealConfigService(fs, console);
         var baseConfig = await configService.LoadConfigAsync(scriptDir);
         var config = ParseArguments(args, baseConfig);
 
         using var rawApi = new TrackmaniaApiWrapper(HttpClient, UserAgent);
-        using var api = new CachedTrackmaniaApi(rawApi, fs, scriptDir, config.Cache);
+        using var api = new CachedTrackmaniaApi(rawApi, fs, dateTime, scriptDir, config.Cache);
         var net = new RealNetworkService(HttpClient);
         var fixer = new RealMapFixer();
-        var dateTime = new RealDateTime();
 
         var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, configService);
         await app.RunAsync(config);
@@ -121,6 +121,9 @@ public static class TrackmaniaCLI
                             dl.ExportMedalsCampaign = args[++i];
                         }
                     }
+                    break;
+                case "--medals-output":
+                    if (i + 1 < args.Length) dl.ExportMedalsOutputPath = args[++i];
                     break;
                 case "--tmx":
                     if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) tmx.TmxMaps = args[++i];
@@ -208,6 +211,7 @@ public static class TrackmaniaCLI
         Console.WriteLine("  --download-delay <ms>      Delay between API requests (default: 1000).");
         Console.WriteLine("  --export-campaign-medals <PlayerID> [campaign]");
         Console.WriteLine("                             Export official campaign medals to medals.csv.");
+        Console.WriteLine("  --medals-output <path>     Custom output path for the medals CSV file.");
         // We could use constants here, but they are not easily available yet.
         Console.WriteLine("\nPlay Options:");
         Console.WriteLine("  --play                     Launch Trackmania with the maps (requires game running)");

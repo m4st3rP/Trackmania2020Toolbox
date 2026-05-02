@@ -18,6 +18,9 @@ public partial class InputParser(IConsole console)
     [GeneratedRegex(@"(Winter|Spring|Summer|Fall)\s+(\d{4})", RegexOptions.IgnoreCase)]
     private static partial Regex SeasonalNameRegex();
 
+    [GeneratedRegex(@"\b(Winter|Spring|Summer|Fall)\s+(\d{4})\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonalFolderRegex();
+
     [GeneratedRegex(@"^(\d{4})$", RegexOptions.None)]
     private static partial Regex YearRegex();
 
@@ -229,6 +232,10 @@ public partial class InputParser(IConsole console)
                     {
                         var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
                         end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
+
+                        // Rollover check for month.day
+                        if (end < start.Value.Start) end = end.AddYears(1);
+
                         ranges.Add((start.Value.Start, end));
                     }
                 }
@@ -237,8 +244,17 @@ public partial class InputParser(IConsole console)
                     var end = ParseToTdDate(endStr, now);
                     if (end.HasValue)
                     {
-                        if (start.Value.Start <= end.Value.End) ranges.Add((start.Value.Start, end.Value.End));
-                        else ranges.Add((end.Value.Start, start.Value.End));
+                        var finalStart = start.Value.Start;
+                        var finalEnd = end.Value.End;
+
+                        // Rollover check for cases like 12.31 - 01.01 (where 01.01 would naturally be same year)
+                        if (MonthDayRegex().IsMatch(endStr) && finalEnd < finalStart)
+                        {
+                            finalEnd = finalEnd.AddYears(1);
+                        }
+
+                        if (finalStart <= finalEnd) ranges.Add((finalStart, finalEnd));
+                        else ranges.Add((finalEnd, finalStart));
                     }
                     else
                     {
@@ -276,6 +292,19 @@ public partial class InputParser(IConsole console)
                 return (new DateTime(y, m, 1), new DateTime(y, m, DateTime.DaysInMonth(y, m)));
             }
         }
+        match = MonthDayRegex().Match(s);
+        if (match.Success)
+        {
+            var parts = s.Split(['.', '/']);
+            if (int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var d))
+            {
+                if (m is >= 1 and <= 12)
+                {
+                    var dt = new DateTime(now.Year, m, Math.Min(d, DateTime.DaysInMonth(now.Year, m)));
+                    return (dt, dt);
+                }
+            }
+        }
         match = YearRegex().Match(s);
         if (match.Success)
         {
@@ -295,6 +324,19 @@ public partial class InputParser(IConsole console)
             if (rangeParts.Length == 1) action(rangeParts[0], null);
             else if (rangeParts.Length == 2) action(rangeParts[0], rangeParts[1]);
         }
+    }
+
+    public string FormatSeasonalFolderName(string campaignName)
+    {
+        var match = SeasonalFolderRegex().Match(campaignName);
+        if (match.Success)
+        {
+            string season = match.Groups[1].Value;
+            string year = match.Groups[2].Value;
+            int order = GetSeasonOrder(season);
+            return $"{year} - {order} - {season}";
+        }
+        return campaignName;
     }
 
     private static int GetSeasonOrder(string season) => season.ToLower() switch

@@ -11,6 +11,7 @@ public class DownloaderConfig
     public string? ToTDDate { get; set; }
     public string? ExportMedalsPlayerId { get; set; }
     public string? ExportMedalsCampaign { get; set; }
+    public string? ExportMedalsOutputPath { get; set; }
     public int DownloadDelayMs { get; set; } = 1000;
 }
 

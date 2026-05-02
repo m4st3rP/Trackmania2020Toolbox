@@ -102,7 +102,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         if (dlCfg.ExportMedalsPlayerId != null)
         {
-            await HandleExportCampaignMedalsAsync(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign, config);
+            await HandleExportCampaignMedalsAsync(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign, config, dlCfg.ExportMedalsOutputPath);
             downloadActionTaken = true;
         }
 
@@ -367,7 +367,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null) return downloadedPaths;
 
-            var seasonalFolderName = PathUtilities.SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
+            var seasonalFolderName = PathUtilities.SanitizeFolderName(_parser.FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
         }
@@ -398,7 +398,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
             if (!mapsToDownload.Any()) continue;
 
-            var seasonalFolderName = PathUtilities.SanitizeFolderName(FormatSeasonalFolderName(campaignItem.Name));
+            var seasonalFolderName = PathUtilities.SanitizeFolderName(_parser.FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(
                 mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, $"{(m.index + 1):D2} - ")),
@@ -433,25 +433,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         return true;
     }
 
-    public string FormatSeasonalFolderName(string campaignName)
-    {
-        var match = Regex.Match(campaignName, @"(Winter|Spring|Summer|Fall)\s+(\d{4})", RegexOptions.IgnoreCase);
-        if (match.Success)
-        {
-            string season = match.Groups[1].Value;
-            string year = match.Groups[2].Value;
-            int order = season.ToLower() switch
-            {
-                "winter" => 1,
-                "spring" => 2,
-                "summer" => 3,
-                "fall" => 4,
-                _ => 0
-            };
-            return $"{year} - {order} - {season}";
-        }
-        return campaignName;
-    }
 
     public async Task<List<string>> HandleClubCampaignAsync(string input, Config config)
     {

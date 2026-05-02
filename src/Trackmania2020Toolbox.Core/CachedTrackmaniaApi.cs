@@ -9,13 +9,15 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
 {
     private readonly ITrackmaniaApi _inner;
     private readonly IFileSystem _fs;
+    private readonly IDateTime _dateTime;
     private readonly string _cacheDir;
     private readonly CacheConfig _config;
 
-    public CachedTrackmaniaApi(ITrackmaniaApi inner, IFileSystem fs, string scriptDirectory, CacheConfig config)
+    public CachedTrackmaniaApi(ITrackmaniaApi inner, IFileSystem fs, IDateTime dateTime, string scriptDirectory, CacheConfig config)
     {
         _inner = inner;
         _fs = fs;
+        _dateTime = dateTime;
         _config = config;
         _cacheDir = Path.IsPathRooted(config.CacheDirectory)
             ? config.CacheDirectory
@@ -39,7 +41,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             {
                 var content = await _fs.ReadAllTextAsync(cacheFile);
                 var entry = JsonSerializer.Deserialize(content, typeInfo);
-                if (entry != null && (DateTime.UtcNow - entry.Timestamp).TotalMinutes < expirationMinutes)
+                if (entry != null && (_dateTime.UtcNow - entry.Timestamp).TotalMinutes < expirationMinutes)
                 {
                     return entry.Data!;
                 }
@@ -50,7 +52,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
         var data = await fetchFunc();
         try
         {
-            var entry = new CacheEntry<T> { Data = data, Timestamp = DateTime.UtcNow };
+            var entry = new CacheEntry<T> { Data = data, Timestamp = _dateTime.UtcNow };
             var content = JsonSerializer.Serialize(entry, typeInfo);
             await _fs.WriteAllTextAsync(cacheFile, content);
         }
