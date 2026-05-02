@@ -83,10 +83,11 @@ public class ToolboxTests
     [Fact]
     public void FormatSeasonalFolderName_ShouldFormatCorrectly()
     {
-        Assert.Equal("2024 - 1 - Winter", _app.FormatSeasonalFolderName("Winter 2024"));
-        Assert.Equal("2024 - 2 - Spring", _app.FormatSeasonalFolderName("Spring 2024"));
-        Assert.Equal("2024 - 3 - Summer", _app.FormatSeasonalFolderName("Summer 2024"));
-        Assert.Equal("2024 - 4 - Fall", _app.FormatSeasonalFolderName("Fall 2024"));
+        var parser = new InputParser(_consoleMock.Object);
+        Assert.Equal("2024 - 1 - Winter", parser.FormatSeasonalFolderName("Winter 2024"));
+        Assert.Equal("2024 - 2 - Spring", parser.FormatSeasonalFolderName("Spring 2024"));
+        Assert.Equal("2024 - 3 - Summer", parser.FormatSeasonalFolderName("Summer 2024"));
+        Assert.Equal("2024 - 4 - Fall", parser.FormatSeasonalFolderName("Fall 2024"));
     }
 
     [Fact]
@@ -623,8 +624,9 @@ public class ToolboxTests
     {
         var innerApi = new Mock<ITrackmaniaApi>();
         var fs = new Mock<IFileSystem>();
+        var dateTime = new Mock<IDateTime>();
         var cacheConfig = new CacheConfig { Enabled = true, CacheDirectory = ".cache" };
-        var cachedApi = new CachedTrackmaniaApi(innerApi.Object, fs.Object, "/test", cacheConfig);
+        var cachedApi = new CachedTrackmaniaApi(innerApi.Object, fs.Object, dateTime.Object, "/test", cacheConfig);
 
         fs.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
         innerApi.Setup(a => a.GetWeeklyShortCampaignsAsync(1)).ReturnsAsync(new Mock<ICampaignCollection>().Object);
@@ -844,5 +846,44 @@ public class FlagRefactorTests
         r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2023-2024", now);
         Assert.Equal(new DateTime(2023, 1, 1), r[0].Start);
         Assert.Equal(new DateTime(2024, 12, 31), r[0].End);
+
+        // Rollover: 12.30 - 01.05
+        r = new InputParser(new Mock<IConsole>().Object).ParseToTdRanges("2024.12.30-01.05", now);
+        Assert.Equal(new DateTime(2024, 12, 30), r[0].Start);
+        Assert.Equal(new DateTime(2025, 1, 5), r[0].End);
+    }
+
+    [Fact]
+    public async Task GetCachedAsync_ShouldRespectExpirationWithMockedTime()
+    {
+        var innerApi = new Mock<ITrackmaniaApi>();
+        var fs = new Mock<IFileSystem>();
+        var dateTime = new Mock<IDateTime>();
+        var cacheConfig = new CacheConfig { Enabled = true, CacheDirectory = ".cache" };
+
+        var startTime = new DateTime(2024, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        dateTime.Setup(d => d.UtcNow).Returns(startTime);
+
+        var cachedApi = new CachedTrackmaniaApi(innerApi.Object, fs.Object, dateTime.Object, "/test", cacheConfig);
+
+        // First call: Not in cache, should fetch
+        fs.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
+        innerApi.Setup(a => a.GetWeeklyShortCampaignsAsync(1)).ReturnsAsync(new Mock<ICampaignCollection>().Object);
+
+        await cachedApi.GetWeeklyShortCampaignsAsync(1);
+        innerApi.Verify(a => a.GetWeeklyShortCampaignsAsync(1), Times.Once);
+
+        // Second call: In cache, not expired, should NOT fetch
+        fs.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
+        var cacheContent = "{\"Data\":{\"Campaigns\":[],\"PageCount\":1},\"Timestamp\":\"2024-01-01T12:00:00Z\"}";
+        fs.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync(cacheContent);
+
+        await cachedApi.GetWeeklyShortCampaignsAsync(1);
+        innerApi.Verify(a => a.GetWeeklyShortCampaignsAsync(1), Times.Once); // Still once
+
+        // Third call: In cache, but EXPIRED, should fetch
+        dateTime.Setup(d => d.UtcNow).Returns(startTime.AddDays(10)); // Expiration is config.DynamicExpirationMinutes (60)
+        await cachedApi.GetWeeklyShortCampaignsAsync(1);
+        innerApi.Verify(a => a.GetWeeklyShortCampaignsAsync(1), Times.Exactly(2));
     }
 }

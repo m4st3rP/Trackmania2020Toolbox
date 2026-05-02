@@ -123,11 +123,11 @@ public partial class MainWindow : Window
         _configService = new RealConfigService(_fs, console);
         _config = _configService.LoadConfig(scriptDir);
 
+        var dateTime = new RealDateTime();
         var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
-        var api = new CachedTrackmaniaApi(rawApi, _fs, scriptDir, _config.Cache);
+        var api = new CachedTrackmaniaApi(rawApi, _fs, dateTime, scriptDir, _config.Cache);
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
-        var dateTime = new RealDateTime();
         _browserService = new RealBrowserService(_fs);
 
         Gbx.LZO = new Lzo();
@@ -456,7 +456,6 @@ public partial class MainWindow : Window
         }
 
         _browserPathDisplay.Text = _currentBrowserDirectory;
-        _browserItems.Clear();
 
         var filter = _browserSearchInput.Text ?? "";
 
@@ -469,11 +468,17 @@ public partial class MainWindow : Window
             }
 
             bool desc = _browserSortCombo.SelectedIndex == 1;
-            var items = _browserService.GetBrowserItems(_currentBrowserDirectory, filter, desc);
-            foreach (var item in items)
+            var currentDir = _currentBrowserDirectory;
+            var items = await Task.Run(() => _browserService.GetBrowserItems(currentDir, filter, desc).ToList());
+
+            Dispatcher.UIThread.Post(() =>
             {
-                _browserItems.Add(item);
-            }
+                _browserItems.Clear();
+                foreach (var item in items)
+                {
+                    _browserItems.Add(item);
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -534,6 +539,12 @@ public partial class MainWindow : Window
         {
             await RunTask(() => _app.LaunchGameAsync([item.FullPath], GetConfig()));
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_configService is IDisposable disposable) disposable.Dispose();
+        base.OnClosed(e);
     }
 
     private void InitializeComponent()
