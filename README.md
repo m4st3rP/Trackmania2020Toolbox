@@ -12,6 +12,9 @@ A utility for downloading Trackmania 2020 maps and batch updating `.Map.Gbx` fil
   - Seasonal Campaigns
   - Club Campaigns
   - Track of the Day
+  - Trackmania Exchange (TMX) maps, packs, and search
+- **Medal Exporter**:
+  - Export personal records and medals from official seasonal campaigns to CSV.
 - **Player**:
   - Launch Trackmania with the selected maps using the `--play` flag (CLI) or the "Play" feature in the GUI.
   - Automatically handles downloaded maps or local files/folders.
@@ -53,18 +56,30 @@ Supports years, seasons, ranges, and map precision:
 - `--seasonal "Winter 2026.24 - Spring 2026.3"`: Downloads a precise range across seasons.
 
 ### Track of the Day
-Supports years, months, days, and complex ranges:
+Supports years, months, days, and complex ranges. Uses dots, slashes, or dashes as separators:
 - `--totd 2024`: Downloads all maps from 2024.
 - `--totd 2024.02`: Downloads all maps from February 2024.
 - `--totd 2024.02.15`: Downloads a specific day.
 - `--totd 2024.02.15-20`: Downloads a range within a month.
 - `--totd 2024.02.15-03.10`: Downloads a range across months.
 - `--totd 2024-2025`: Downloads all maps from 2024 and 2025.
+- `--totd 12.30-01.05`: Downloads a range across year boundaries (automatically handles year rollover).
 
 ### Club Campaigns
-- `--club-campaign <clubId>`: Downloads ALL campaigns belonging to that club.
+- `--club-campaign <clubId>`: Downloads ALL campaigns belonging to that club (searches up to 20 pages).
 - `--club-campaign <clubId>/<campaignId>`: Downloads a specific campaign.
-- `--club-campaign <search_term>`: Searches for a campaign by name.
+- `--club-campaign <search_term>`: Searches for a campaign by name (searches up to 20 pages).
+
+### Trackmania Exchange (TMX)
+- `--tmx <ids|urls>`: Download maps from TMX (comma-separated).
+- `--tmx-pack <ids|urls>`: Download map packs from TMX.
+- `--tmx-search <name>`: Search for maps by name.
+- `--tmx-author <name>`: Search for maps by author.
+- `--tmx-random`: Download a random map from TMX.
+
+### Medal Exporter
+- `--export-campaign-medals <PlayerID> [campaign_filter]`: Export seasonal campaign medals to a CSV file.
+- `--medals-output <path>`: Custom output path for the medals CSV file (default: `medals.csv`).
 
 ## Project Structure
 
