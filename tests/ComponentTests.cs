@@ -34,7 +34,9 @@ public class ComponentTests : IDisposable
             _fixerMock.Object, // Mocked fixer for component tests to avoid Gbx.Parse crashes
             _consoleMock.Object,
             _dateTimeMock.Object,
-            _tempDir
+            _tempDir,
+            new InputParser(_consoleMock.Object),
+            new MapDownloader(_fs, _netMock.Object, _fixerMock.Object, _consoleMock.Object)
         );
         // Override the private _defaultMapsFolder for testing
         var field = typeof(ToolboxApp).GetField("_defaultMapsFolder", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);

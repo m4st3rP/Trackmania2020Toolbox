@@ -76,8 +76,10 @@ public static class TrackmaniaCLI
         using var api = new CachedTrackmaniaApi(rawApi, fs, dateTime, scriptDir, config.Cache);
         var net = new RealNetworkService(HttpClient);
         var fixer = new RealMapFixer();
+        var parser = new InputParser(console);
+        var downloader = new MapDownloader(fs, net, fixer, console);
 
-        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, configService);
+        var app = new ToolboxApp(api, fs, net, fixer, console, dateTime, scriptDir, parser, downloader, configService);
         await app.RunAsync(config);
     }
 
