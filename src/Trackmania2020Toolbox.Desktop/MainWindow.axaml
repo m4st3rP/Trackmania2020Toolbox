@@ -56,11 +56,31 @@
                     <StackPanel Margin="20" Spacing="15">
                         <TextBlock Text="Download Maps" FontSize="20" FontWeight="Bold"/>
 
+                        <HeaderedContentControl Header="Club Campaign">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="Name search, ID (clubId/campaignId), or Club ID (downloads all campaigns):"/>
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBox Name="ClubInput" Watermark="e.g., Royal, 123/456, 123"/>
+                                    <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ClubBtn"/>
+                                </Grid>
+                            </StackPanel>
+                        </HeaderedContentControl>
+
+                        <HeaderedContentControl Header="Track of the Day">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="Date (YYYY, YYYY.MM, YYYY.MM.DD, range), 'latest', or 'all' (comma-separated):"/>
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBox Name="ToTDInput" Text="latest" Watermark="e.g., 2024, 2024.01, 2024.01.01, 2024.01.01-05"/>
+                                    <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ToTDBtn"/>
+                                </Grid>
+                            </StackPanel>
+                        </HeaderedContentControl>
+
                         <HeaderedContentControl Header="Weekly Shorts">
                             <StackPanel Spacing="5">
                                 <TextBlock Text="Weeks (e.g., 68, 70-72, 68.1-68.3), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
-                                    <TextBox Name="WeeklyShortsInput" Text="latest"/>
+                                    <TextBox Name="WeeklyShortsInput" Text="latest" Watermark="e.g., 68, 70-72, 68.1-68.3"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="WeeklyShortsBtn"/>
                                 </Grid>
                             </StackPanel>
@@ -70,7 +90,7 @@
                             <StackPanel Spacing="5">
                                 <TextBlock Text="Weeks (e.g., 65, 60-65, 65.1-65.3), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
-                                    <TextBox Name="WeeklyGrandsInput" Text="latest"/>
+                                    <TextBox Name="WeeklyGrandsInput" Text="latest" Watermark="e.g., 65, 60-65, 65.1-65.3"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="WeeklyGrandsBtn"/>
                                 </Grid>
                             </StackPanel>
@@ -80,28 +100,8 @@
                             <StackPanel Spacing="5">
                                 <TextBlock Text="Name, year, range (e.g., Summer 2022-Fall 2022, 2024, Winter 2024.1), 'latest', or 'all' (comma-separated):"/>
                                 <Grid ColumnDefinitions="*, Auto">
-                                    <TextBox Name="SeasonalInput" Text="latest"/>
+                                    <TextBox Name="SeasonalInput" Text="latest" Watermark="e.g., 2024, Winter 2024, Summer 2024.1-3"/>
                                     <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="SeasonalBtn"/>
-                                </Grid>
-                            </StackPanel>
-                        </HeaderedContentControl>
-
-                        <HeaderedContentControl Header="Track of the Day">
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="Date (YYYY, YYYY-MM, YYYY-MM-DD, range), 'latest', or 'all' (comma-separated):"/>
-                                <Grid ColumnDefinitions="*, Auto">
-                                    <TextBox Name="ToTDInput" Text="latest"/>
-                                    <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ToTDBtn"/>
-                                </Grid>
-                            </StackPanel>
-                        </HeaderedContentControl>
-
-                        <HeaderedContentControl Header="Club Campaign">
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="Search term, ID (clubId/campaignId), or single Club ID:"/>
-                                <Grid ColumnDefinitions="*, Auto">
-                                    <TextBox Name="ClubInput"/>
-                                    <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="ClubBtn"/>
                                 </Grid>
                             </StackPanel>
                         </HeaderedContentControl>
@@ -118,7 +118,7 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="Download maps by ID or URL (comma-separated):"/>
                             <Grid ColumnDefinitions="*, Auto">
-                                <TextBox Name="TmxInput"/>
+                                <TextBox Name="TmxInput" Watermark="e.g., 12345, https://trackmania.exchange/maps/12345"/>
                                 <Button Grid.Column="1" Content="Download" Margin="5,0,0,0" Name="TmxDownloadBtn"/>
                             </Grid>
                         </StackPanel>
@@ -126,7 +126,7 @@
                         <StackPanel Spacing="5">
                             <TextBlock Text="Download Map Pack by ID or URL:"/>
                             <Grid ColumnDefinitions="*, Auto">
-                                <TextBox Name="TmxPackInput"/>
+                                <TextBox Name="TmxPackInput" Watermark="e.g., 123, https://trackmania.exchange/mappack/123"/>
                                 <Button Grid.Column="1" Content="Download Pack" Margin="5,0,0,0" Name="TmxPackBtn"/>
                             </Grid>
                         </StackPanel>
@@ -170,7 +170,7 @@
 
                     <TextBlock Text="Target Folder:"/>
                     <Grid ColumnDefinitions="*, Auto">
-                        <TextBox Name="FixerFolderInput"/>
+                        <TextBox Name="FixerFolderInput" Watermark="Folder containing .Map.Gbx files"/>
                         <Button Grid.Column="1" Content="Browse" Margin="5,0,0,0" Name="BrowseFixerBtn"/>
                     </Grid>
 
@@ -183,9 +183,9 @@
                 <StackPanel Margin="20" Spacing="15">
                     <TextBlock Text="Export Campaign Medals" FontSize="20" FontWeight="Bold"/>
                     <TextBlock Text="Player ID (GUID):"/>
-                    <TextBox Name="PlayerIdInput"/>
+                    <TextBox Name="PlayerIdInput" Watermark="e.g., 00000000-0000-0000-0000-000000000000"/>
                     <TextBlock Text="Campaign Filter (optional):"/>
-                    <TextBox Name="MedalsCampaignInput"/>
+                    <TextBox Name="MedalsCampaignInput" Watermark="e.g., Winter 2024"/>
                     <Button Content="Export to medals.csv" HorizontalAlignment="Stretch" Name="ExportMedalsBtn"/>
                 </StackPanel>
             </TabItem>
