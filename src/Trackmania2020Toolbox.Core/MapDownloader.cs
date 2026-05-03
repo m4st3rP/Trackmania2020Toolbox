@@ -3,7 +3,7 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox;
 
-public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console)
+public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console) : IMapDownloader
 {
     private readonly IFileSystem _fs = fs;
     private readonly INetworkService _net = net;

@@ -25,19 +25,61 @@ public static class PathUtilities
         });
     }
 
-    public static string SanitizeFolderName(string folderName) => SanitizeString(folderName).Trim();
+    public static string SanitizeFolderName(string folderName)
+    {
+        if (string.IsNullOrEmpty(folderName)) return folderName;
+
+        var span = folderName.AsSpan().Trim();
+        if (span.IsEmpty) return string.Empty;
+
+        return string.Create(span.Length, span, (dest, state) =>
+        {
+            state.CopyTo(dest);
+            int index;
+            while ((index = dest.IndexOfAny(InvalidFileNameChars)) != -1)
+            {
+                dest[index] = '_';
+            }
+        });
+    }
 }
 
 public static class CsvUtilities
 {
+    private static readonly SearchValues<char> CsvSpecialChars = SearchValues.Create(",\"\n\r");
+
     public static string EscapeCsv(string value)
     {
         if (string.IsNullOrEmpty(value)) return value;
 
-        if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+        if (value.AsSpan().IndexOfAny(CsvSpecialChars) == -1)
         {
-            return "\"" + value.Replace("\"", "\"\"") + "\"";
+            return value;
         }
-        return value;
+
+        int quoteCount = 0;
+        foreach (char c in value)
+        {
+            if (c == '"') quoteCount++;
+        }
+
+        return string.Create(value.Length + quoteCount + 2, (value, quoteCount), (span, state) =>
+        {
+            span[0] = '"';
+            int destIdx = 1;
+            foreach (char c in state.value)
+            {
+                if (c == '"')
+                {
+                    span[destIdx++] = '"';
+                    span[destIdx++] = '"';
+                }
+                else
+                {
+                    span[destIdx++] = c;
+                }
+            }
+            span[destIdx] = '"';
+        });
     }
 }

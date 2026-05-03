@@ -21,6 +21,8 @@ public class ToolboxAppExpandedTests
     private readonly Mock<IMapFixer> _fixerMock = new();
     private readonly Mock<IConsole> _consoleMock = new();
     private readonly Mock<IDateTime> _dateTimeMock = new();
+    private readonly Mock<IInputParser> _parserMock = new();
+    private readonly Mock<IMapDownloader> _downloaderMock = new();
     private readonly ToolboxApp _app;
 
     public ToolboxAppExpandedTests()
@@ -32,7 +34,9 @@ public class ToolboxAppExpandedTests
             _fixerMock.Object,
             _consoleMock.Object,
             _dateTimeMock.Object,
-            "/test"
+            "/test",
+            _parserMock.Object,
+            _downloaderMock.Object
         );
     }
 
@@ -48,6 +52,8 @@ public class ToolboxAppExpandedTests
         collection.Setup(c => c.PageCount).Returns(1);
 
         _apiMock.Setup(a => a.GetWeeklyGrandCampaignsAsync(0)).ReturnsAsync(collection.Object);
+        _parserMock.Setup(p => p.ParseWeeklyGrandsNum("Week Grand 65")).Returns(65);
+        _parserMock.Setup(p => p.ParseMapRanges("65")).Returns(new List<(MapRef Start, MapRef End)> { (new MapRef(65), new MapRef(65)) });
 
         var map = new Mock<IMap>();
         map.Setup(m => m.Name).Returns("Map 1");
@@ -57,14 +63,14 @@ public class ToolboxAppExpandedTests
         campaign.Setup(c => c.Playlist).Returns(new[] { map.Object });
         _apiMock.Setup(a => a.GetWeeklyGrandCampaignAsync(123)).ReturnsAsync(campaign.Object);
 
-        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
-        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/map" });
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--weekly-grands", "65" }, Config.Default);
         await _app.HandleWeeklyGrandsAsync("65", config);
 
         _apiMock.Verify(a => a.GetWeeklyGrandCampaignAsync(123), Times.Once);
-        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("65 - ")), It.IsAny<byte[]>()), Times.Once);
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 
     [Fact]
@@ -79,7 +85,7 @@ public class ToolboxAppExpandedTests
         collection.Setup(c => c.Campaigns).Returns(new[] { campaignItem.Object });
         collection.Setup(c => c.PageCount).Returns(1);
 
-        _apiMock.Setup(a => a.GetClubCampaignsAsync(0)).ReturnsAsync(collection.Object);
+        _apiMock.Setup(a => a.GetClubCampaignsAsync(It.IsAny<int>())).ReturnsAsync(collection.Object);
 
         var map = new Mock<IMap>();
         map.Setup(m => m.Name).Returns("Map 1");
@@ -91,13 +97,14 @@ public class ToolboxAppExpandedTests
         campaign.Setup(c => c.Name).Returns("Club Race 1");
         _apiMock.Setup(a => a.GetClubCampaignAsync(10, 456)).ReturnsAsync(campaign.Object);
 
-        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
-        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/map" });
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--club-campaign", "Race" }, Config.Default);
         await _app.HandleClubCampaignAsync("Race", config);
 
         _apiMock.Verify(a => a.GetClubCampaignAsync(10, 456), Times.Once);
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 
     [Fact]
@@ -119,14 +126,13 @@ public class ToolboxAppExpandedTests
         _apiMock.Setup(a => a.GetTmxMapPackMapsAsync(1)).ReturnsAsync(new[] { map1.Object, map2.Object });
         _apiMock.Setup(a => a.GetTmxMapUrl(It.IsAny<int>())).Returns("http://tmx/gbx");
 
-        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
-        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/map" });
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-pack", "1" }, Config.Default);
         await _app.HandleTmxPacksAsync("1", config);
 
-        _netMock.Verify(n => n.GetByteArrayAsync("http://tmx/gbx"), Times.Exactly(2));
-        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Cool Pack")), It.IsAny<byte[]>()), Times.Exactly(2));
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 
     [Fact]
@@ -140,14 +146,14 @@ public class ToolboxAppExpandedTests
         _apiMock.Setup(a => a.GetTmxMapAsync(777)).ReturnsAsync(map.Object);
         _apiMock.Setup(a => a.GetTmxMapUrl(777)).Returns("http://url");
 
-        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
-        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/map" });
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-random" }, Config.Default);
         await _app.HandleTmxRandomAsync(config);
 
         _apiMock.Verify(a => a.GetRandomTmxMapAsync(), Times.Once);
-        _netMock.Verify(n => n.GetByteArrayAsync("http://url"), Times.Once);
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 
     [Fact]
@@ -188,6 +194,10 @@ public class ToolboxAppExpandedTests
         totdCollection.Setup(c => c.Month).Returns(1);
         _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(It.IsAny<int>())).ReturnsAsync(totdCollection.Object);
 
+        _parserMock.Setup(p => p.ParseMapRanges("1")).Returns(new List<(MapRef Start, MapRef End)> { (new MapRef(1), new MapRef(1)) });
+        _parserMock.Setup(p => p.ParseSeasonalRanges("Winter 2024")).Returns(new List<(SeasonalRef Start, SeasonalRef End)> { (new SeasonalRef(2024, 1), new SeasonalRef(2024, 1)) });
+        _parserMock.Setup(p => p.ParseToTdRanges("2024.01.01", It.IsAny<DateTime>())).Returns(new List<(DateTime Start, DateTime End)> { (new DateTime(2024, 1, 1), new DateTime(2024, 1, 1)) });
+
         await _app.RunAsync(config);
 
         _apiMock.Verify(a => a.GetWeeklyShortCampaignsAsync(It.IsAny<int>()), Times.AtLeastOnce);
@@ -200,6 +210,8 @@ public class ToolboxAppExpandedTests
     public async Task HandleTmxMapsAsync_ShouldHandleNotFound()
     {
         _apiMock.Setup(a => a.GetTmxMapAsync(It.IsAny<int>())).ReturnsAsync((ITmxMap?)null);
+        _parserMock.Setup(p => p.ParseNumbers(It.IsAny<string>())).Returns(new List<int> { 999 });
+
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx", "999" }, Config.Default);
 
         await _app.HandleTmxMapsAsync("999", config);
@@ -229,6 +241,8 @@ public class ToolboxAppExpandedTests
         collection.Setup(c => c.PageCount).Returns(1);
         _apiMock.Setup(a => a.GetSeasonalCampaignsAsync(It.IsAny<int>())).ReturnsAsync(collection.Object);
 
+        _parserMock.Setup(p => p.ParseSeasonalRanges("NotFound")).Returns(new List<(SeasonalRef Start, SeasonalRef End)>());
+
         var config = TrackmaniaCLI.ParseArguments(new[] { "--seasonal", "NotFound" }, Config.Default);
         await _app.HandleSeasonalAsync("NotFound", config);
 
@@ -252,8 +266,8 @@ public class ToolboxAppExpandedTests
         var result = await new MapDownloader(_fsMock.Object, _netMock.Object, _fixerMock.Object, _consoleMock.Object).DownloadAndFixMapsAsync(maps, "/test/download", config);
 
         Assert.Equal(2, result.Count);
-        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("P1-FileA")), It.IsAny<byte[]>()), Times.Once);
-        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => s.Contains("Map B")), It.IsAny<byte[]>()), Times.Once);
+        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => Path.GetFileName(s) == "P1-FileA.Map.Gbx"), It.IsAny<byte[]>()), Times.Once);
+        _fsMock.Verify(f => f.WriteAllBytesAsync(It.Is<string>(s => Path.GetFileName(s) == "Map B.Map.Gbx"), It.IsAny<byte[]>()), Times.Once);
     }
 
     [Fact]
@@ -280,14 +294,14 @@ public class ToolboxAppExpandedTests
         campaign.Setup(c => c.Name).Returns("Club / Campaign?");
         _apiMock.Setup(a => a.GetClubCampaignAsync(10, 456)).ReturnsAsync(campaign.Object);
 
-        _fsMock.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
-        _netMock.Setup(n => n.GetByteArrayAsync(It.IsAny<string>())).ReturnsAsync(new byte[10]);
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/map" });
 
         var config = TrackmaniaCLI.ParseArguments(["--club-campaign", "10/456"], Config.Default);
         await _app.HandleClubCampaignAsync("10/456", config);
 
-        // "/" and ":" should be replaced by "_"
-        _fsMock.Verify(f => f.DirectoryExists(It.Is<string>(s => s.Contains("Club_ Name") && s.Contains("Club _ Campaign_"))), Times.AtLeastOnce);
+        // "/" and ":" should be replaced by "_" in the downloadDir passed to the downloader
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.Is<string>(s => s.Contains("Club_ Name") && s.Contains("Club _ Campaign_")), It.IsAny<Config>()), Times.Once);
     }
 
     [Theory]
@@ -339,5 +353,40 @@ public class ToolboxAppExpandedTests
             lines.Contains("Campaign Name,Track Name,Medal,Best Time") &&
             lines.Any(l => l.StartsWith("Campaign,Track,0,"))
         )), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleTrackOfTheDayAsync_ShouldUseParserAndDownloader()
+    {
+        var now = new DateTime(2024, 1, 1, 18, 0, 0);
+        _dateTimeMock.Setup(d => d.UtcNow).Returns(now);
+
+        _parserMock.Setup(p => p.ParseToTdRanges("2024.01.01", It.Is<DateTime>(dt => dt == now)))
+                   .Returns(new List<(DateTime Start, DateTime End)> { (now.Date, now.Date) });
+
+        var totdCollection = new Mock<ITrackOfTheDayCollection>();
+        totdCollection.Setup(c => c.Year).Returns(2024);
+        totdCollection.Setup(c => c.Month).Returns(1);
+
+        var map = new Mock<ITrackmaniaMap>();
+        map.Setup(m => m.Name).Returns("TOTD Map");
+        map.Setup(m => m.FileUrl).Returns("http://totd/url");
+
+        var totdDay = new Mock<ITrackOfTheDayDay>();
+        totdDay.Setup(d => d.MonthDay).Returns(1);
+        totdDay.Setup(d => d.Map).Returns(map.Object);
+
+        totdCollection.Setup(c => c.Days).Returns(new[] { totdDay.Object });
+
+        _apiMock.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(totdCollection.Object);
+
+        _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
+                       .ReturnsAsync(new List<string> { "path/to/totd" });
+
+        var config = Config.Default;
+        await _app.HandleTrackOfTheDayAsync("2024.01.01", config);
+
+        _parserMock.Verify(p => p.ParseToTdRanges("2024.01.01", now), Times.Once);
+        _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 }

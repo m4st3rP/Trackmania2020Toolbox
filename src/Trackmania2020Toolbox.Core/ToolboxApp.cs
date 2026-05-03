@@ -5,7 +5,7 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox;
 
-public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IConfigService? configService = null)
+public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net, IMapFixer fixer, IConsole console, IDateTime dateTime, string scriptDirectory, IInputParser parser, IMapDownloader downloader, IConfigService? configService = null)
 {
     private const int TotdReleaseHour = 17;
 
@@ -19,8 +19,8 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
     private readonly string _scriptDirectory = scriptDirectory;
     private readonly string _defaultMapsFolder = Config.DefaultMapsFolder;
 
-    private readonly InputParser _parser = new(console);
-    private readonly MapDownloader _downloader = new(fs, net, fixer, console);
+    private readonly IInputParser _parser = parser;
+    private readonly IMapDownloader _downloader = downloader;
 
     public string ScriptDirectory => _scriptDirectory;
     public string DefaultMapsFolder => _defaultMapsFolder;

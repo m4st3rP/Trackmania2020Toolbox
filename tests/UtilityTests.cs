@@ -42,4 +42,24 @@ public class UtilityTests
         var result = CsvUtilities.EscapeCsv(input!);
         Assert.Equal(expected, result);
     }
+
+    [Fact]
+    public void EscapeCsv_ShouldHandleMultipleQuotes()
+    {
+        var input = "He said \"Hello, World!\"";
+        var expected = "\"He said \"\"Hello, World!\"\"\"";
+        var result = CsvUtilities.EscapeCsv(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("  folder name  ", "folder name")]
+    [InlineData("folder/name ", "folder_name")]
+    [InlineData("  ", "")]
+    [InlineData("", "")]
+    public void SanitizeFolderName_ShouldHandleEdgeCases(string input, string expected)
+    {
+        var result = PathUtilities.SanitizeFolderName(input);
+        Assert.Equal(expected, result);
+    }
 }

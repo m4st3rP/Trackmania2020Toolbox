@@ -129,12 +129,14 @@ public partial class MainWindow : Window
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
         _browserService = new RealBrowserService(_fs);
+        var parser = new InputParser(console);
+        var downloader = new MapDownloader(_fs, net, fixer, console);
 
         Gbx.LZO = new Lzo();
         if (!TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Contains("User-Agent"))
             TrackmaniaCLI.HttpClient.DefaultRequestHeaders.Add("User-Agent", TrackmaniaCLI.UserAgent);
 
-        _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, scriptDir, _configService);
+        _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, scriptDir, parser, downloader, _configService);
 
         // Load initial settings
         UpdateUiFromConfig();

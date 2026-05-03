@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Trackmania2020Toolbox;
 
-public partial class InputParser(IConsole console)
+public partial class InputParser(IConsole console) : IInputParser
 {
     private readonly IConsole _console = console;
 

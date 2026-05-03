@@ -78,6 +78,25 @@ public interface IBrowserService
     IEnumerable<BrowserItem> GetBrowserItems(string directory, string filter, bool descending);
 }
 
+public interface IInputParser
+{
+    int ParseWeeklyShortsNum(string name);
+    int ParseWeeklyGrandsNum(string name);
+    List<int> ParseNumbers(string input);
+    List<(MapRef Start, MapRef End)> ParseMapRanges(string input);
+    MapRef? ParseMapRef(string s);
+    List<(SeasonalRef Start, SeasonalRef End)> ParseSeasonalRanges(string input);
+    SeasonalRef? ParseSeasonalRef(string s);
+    SeasonalRef? ParseSeasonalRefFromCampaignName(string campaignName);
+    List<(DateTime Start, DateTime End)> ParseToTdRanges(string input, DateTime now);
+    string FormatSeasonalFolderName(string campaignName);
+}
+
+public interface IMapDownloader
+{
+    Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config);
+}
+
 public interface IConfigService
 {
     Task<Config> LoadConfigAsync(string scriptDirectory);

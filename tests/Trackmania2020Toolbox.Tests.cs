@@ -32,7 +32,9 @@ public class ToolboxTests
             _fixerMock.Object,
             _consoleMock.Object,
             _dateTimeMock.Object,
-            "/test/script/dir"
+            "/test/script/dir",
+            new InputParser(_consoleMock.Object),
+            new MapDownloader(_fsMock.Object, _netMock.Object, _fixerMock.Object, _consoleMock.Object)
         );
     }
 
@@ -677,6 +679,8 @@ public class ToolboxTests
             _consoleMock.Object,
             _dateTimeMock.Object,
             "/test",
+            new InputParser(_consoleMock.Object),
+            new MapDownloader(_fsMock.Object, _netMock.Object, _fixerMock.Object, _consoleMock.Object),
             configServiceMock.Object
         );
 
@@ -766,7 +770,20 @@ public class FlagRefactorTests
 
     public FlagRefactorTests()
     {
-        _app = new ToolboxApp(new Mock<ITrackmaniaApi>().Object, new Mock<IFileSystem>().Object, new Mock<INetworkService>().Object, new Mock<IMapFixer>().Object, new Mock<IConsole>().Object, new Mock<IDateTime>().Object, "/test");
+        var console = new Mock<IConsole>().Object;
+        var fs = new Mock<IFileSystem>().Object;
+        var net = new Mock<INetworkService>().Object;
+        var fixer = new Mock<IMapFixer>().Object;
+        _app = new ToolboxApp(
+            new Mock<ITrackmaniaApi>().Object,
+            fs,
+            net,
+            fixer,
+            console,
+            new Mock<IDateTime>().Object,
+            "/test",
+            new InputParser(console),
+            new MapDownloader(fs, net, fixer, console));
     }
 
     [Theory]
