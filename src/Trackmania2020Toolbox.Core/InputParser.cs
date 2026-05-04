@@ -4,8 +4,6 @@ namespace Trackmania2020Toolbox;
 
 public partial class InputParser(IConsole console) : IInputParser
 {
-    private readonly IConsole _console = console;
-
     [GeneratedRegex(@"\bWeek 0*(\d+)\b", RegexOptions.IgnoreCase)]
     private static partial Regex WeeklyShortsRegex();
 
@@ -36,7 +34,7 @@ public partial class InputParser(IConsole console) : IInputParser
     [GeneratedRegex(@"^\d{1,2}$", RegexOptions.None)]
     private static partial Regex DayOnlyRegex();
 
-    [GeneratedRegex(@"^\d{1,2}[\.\/]\d{1,2}$", RegexOptions.None)]
+    [GeneratedRegex(@"^(\d{1,2})[\.\/](\d{1,2})$", RegexOptions.None)]
     private static partial Regex MonthDayRegex();
 
     [GeneratedRegex(@"\s*-\s*", RegexOptions.None)]
@@ -60,11 +58,9 @@ public partial class InputParser(IConsole console) : IInputParser
         var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
-            if (part.Contains('-'))
+            if (part.Split('-') is [var sStr, var eStr] && int.TryParse(sStr, out var start) && int.TryParse(eStr, out var end))
             {
-                var range = part.Split('-');
-                if (range.Length == 2 && int.TryParse(range[0], out var start) && int.TryParse(range[1], out var end))
-                    for (var i = Math.Min(start, end); i <= Math.Max(start, end); i++) result.Add(i);
+                for (var i = Math.Min(start, end); i <= Math.Max(start, end); i++) result.Add(i);
             }
             else if (int.TryParse(part, out var num)) result.Add(num);
         }
@@ -79,7 +75,7 @@ public partial class InputParser(IConsole console) : IInputParser
             var start = ParseMapRef(s);
             if (start == null)
             {
-                _console.WriteLine($"Error: Could not parse map reference '{s}'.");
+                console.WriteLine($"Error: Could not parse map reference '{s}'.");
                 return;
             }
 
@@ -97,7 +93,7 @@ public partial class InputParser(IConsole console) : IInputParser
                 }
                 else
                 {
-                    _console.WriteLine($"Error: Could not parse map reference '{e}'.");
+                    console.WriteLine($"Error: Could not parse map reference '{e}'.");
                 }
             }
         });
@@ -124,7 +120,7 @@ public partial class InputParser(IConsole console) : IInputParser
             var start = ParseSeasonalRef(s);
             if (start == null)
             {
-                _console.WriteLine($"Error: Could not parse seasonal reference '{s}'.");
+                console.WriteLine($"Error: Could not parse seasonal reference '{s}'.");
                 return;
             }
 
@@ -154,7 +150,7 @@ public partial class InputParser(IConsole console) : IInputParser
                 }
                 else
                 {
-                    _console.WriteLine($"Error: Could not parse seasonal reference '{e}'.");
+                    console.WriteLine($"Error: Could not parse seasonal reference '{e}'.");
                 }
             }
         });
@@ -209,7 +205,7 @@ public partial class InputParser(IConsole console) : IInputParser
             var start = ParseToTdDate(s, now);
             if (!start.HasValue)
             {
-                _console.WriteLine($"Error: Could not parse date '{s}'.");
+                console.WriteLine($"Error: Could not parse date '{s}'.");
                 return;
             }
 
@@ -220,17 +216,28 @@ public partial class InputParser(IConsole console) : IInputParser
             else
             {
                 var endStr = e.Trim();
-                if (DayOnlyRegex().IsMatch(endStr) && int.TryParse(endStr, out var endDay))
+                var endDayMatch = DayOnlyRegex().Match(endStr);
+                var endMonthDayMatch = MonthDayRegex().Match(endStr);
+
+                if (endDayMatch.Success)
                 {
-                    var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
-                    ranges.Add((start.Value.Start, end));
-                }
-                else if (MonthDayRegex().IsMatch(endStr))
-                {
-                    var endParts = endStr.Split(['.', '/']);
-                    if (int.TryParse(endParts[0], out var endM) && int.TryParse(endParts[1], out var endD))
+                    if (int.TryParse(endDayMatch.Value, out var endDay) && endDay >= 1)
                     {
-                        var end = new DateTime(start.Value.Start.Year, Math.Min(12, endM), 1);
+                        var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
+                        ranges.Add((start.Value.Start, end));
+                    }
+                    else
+                    {
+                        console.WriteLine($"Error: Invalid day '{endStr}'.");
+                    }
+                }
+                else if (endMonthDayMatch.Success)
+                {
+                    if (int.TryParse(endMonthDayMatch.Groups[1].Value, out var endM) &&
+                        int.TryParse(endMonthDayMatch.Groups[2].Value, out var endD) &&
+                        endM is >= 1 and <= 12 && endD >= 1)
+                    {
+                        var end = new DateTime(start.Value.Start.Year, endM, 1);
                         end = new DateTime(end.Year, end.Month, Math.Min(DateTime.DaysInMonth(end.Year, end.Month), endD));
 
                         // Rollover check for month.day
@@ -238,14 +245,18 @@ public partial class InputParser(IConsole console) : IInputParser
 
                         ranges.Add((start.Value.Start, end));
                     }
+                    else
+                    {
+                        console.WriteLine($"Error: Invalid month or day in '{endStr}'.");
+                    }
                 }
                 else
                 {
-                    var end = ParseToTdDate(endStr, now);
-                    if (end.HasValue)
+                    var endResult = ParseToTdDate(endStr, now);
+                    if (endResult.HasValue)
                     {
                         var finalStart = start.Value.Start;
-                        var finalEnd = end.Value.End;
+                        var finalEnd = endResult.Value.End;
 
                         // Rollover check for cases like 12.31 - 01.01 (where 01.01 would naturally be same year)
                         if (MonthDayRegex().IsMatch(endStr) && finalEnd < finalStart)
@@ -258,7 +269,7 @@ public partial class InputParser(IConsole console) : IInputParser
                     }
                     else
                     {
-                        _console.WriteLine($"Error: Could not parse date '{e}'.");
+                        console.WriteLine($"Error: Could not parse date '{e}'.");
                     }
                 }
             }
@@ -269,48 +280,41 @@ public partial class InputParser(IConsole console) : IInputParser
     private (DateTime Start, DateTime End)? ParseToTdDate(string s, DateTime now)
     {
         s = s.Trim();
-        var match = ToTdDateFullRegex().Match(s);
-        if (match.Success)
+
+        if (ToTdDateFullRegex().Match(s) is { Success: true } fullMatch &&
+            int.TryParse(fullMatch.Groups[1].Value, out var y) &&
+            int.TryParse(fullMatch.Groups[2].Value, out var m) &&
+            int.TryParse(fullMatch.Groups[3].Value, out var d) &&
+            m is >= 1 and <= 12 && d >= 1)
         {
-            int y = int.Parse(match.Groups[1].Value);
-            int m = int.Parse(match.Groups[2].Value);
-            int d = int.Parse(match.Groups[3].Value);
-            if (m is >= 1 and <= 12)
-            {
-                int daysInMonth = DateTime.DaysInMonth(y, m);
-                var dt = new DateTime(y, m, Math.Min(d, daysInMonth));
-                return (dt, dt);
-            }
+            int daysInMonth = DateTime.DaysInMonth(y, m);
+            var dt = new DateTime(y, m, Math.Min(d, daysInMonth));
+            return (dt, dt);
         }
-        match = ToTdDateMonthRegex().Match(s);
-        if (match.Success)
+
+        if (ToTdDateMonthRegex().Match(s) is { Success: true } monthMatch &&
+            int.TryParse(monthMatch.Groups[1].Value, out var ym) &&
+            int.TryParse(monthMatch.Groups[2].Value, out var mm) &&
+            mm is >= 1 and <= 12)
         {
-            int y = int.Parse(match.Groups[1].Value);
-            int m = int.Parse(match.Groups[2].Value);
-            if (m is >= 1 and <= 12)
-            {
-                return (new DateTime(y, m, 1), new DateTime(y, m, DateTime.DaysInMonth(y, m)));
-            }
+            return (new DateTime(ym, mm, 1), new DateTime(ym, mm, DateTime.DaysInMonth(ym, mm)));
         }
-        match = MonthDayRegex().Match(s);
-        if (match.Success)
+
+        if (MonthDayRegex().Match(s) is { Success: true } mdMatch &&
+            int.TryParse(mdMatch.Groups[1].Value, out var mmd) &&
+            int.TryParse(mdMatch.Groups[2].Value, out var dmd) &&
+            mmd is >= 1 and <= 12 && dmd >= 1)
         {
-            var parts = s.Split(['.', '/']);
-            if (int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var d))
-            {
-                if (m is >= 1 and <= 12)
-                {
-                    var dt = new DateTime(now.Year, m, Math.Min(d, DateTime.DaysInMonth(now.Year, m)));
-                    return (dt, dt);
-                }
-            }
+            var dt = new DateTime(now.Year, mmd, Math.Min(dmd, DateTime.DaysInMonth(now.Year, mmd)));
+            return (dt, dt);
         }
-        match = YearRegex().Match(s);
-        if (match.Success)
+
+        if (YearRegex().Match(s) is { Success: true } yMatch &&
+            int.TryParse(yMatch.Groups[1].Value, out var year))
         {
-            int y = int.Parse(match.Groups[1].Value);
-            return (new DateTime(y, 1, 1), new DateTime(y, 12, 31));
+            return (new DateTime(year, 1, 1), new DateTime(year, 12, 31));
         }
+
         return null;
     }
 
@@ -319,10 +323,9 @@ public partial class InputParser(IConsole console) : IInputParser
         var parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
-            var trimmedPart = part.Trim();
-            var rangeParts = RangeSeparatorRegex().Split(trimmedPart);
-            if (rangeParts.Length == 1) action(rangeParts[0], null);
-            else if (rangeParts.Length == 2) action(rangeParts[0], rangeParts[1]);
+            var rangeParts = RangeSeparatorRegex().Split(part.Trim());
+            if (rangeParts is [var start, var end]) action(start, end);
+            else if (rangeParts is [var startOnly]) action(startOnly, null);
         }
     }
 
