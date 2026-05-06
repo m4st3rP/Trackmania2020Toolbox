@@ -58,6 +58,28 @@ public class InputParserTests
         Assert.Equal(2022, result.Year);
         Assert.Equal(3, result.SeasonOrder);
     }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldHandleCrossYearRollover()
+    {
+        var now = new DateTime(2024, 12, 31);
+        var result = _parser.ParseToTdRanges("12.30-01.05", now);
+
+        Assert.Single(result);
+        Assert.Equal(new DateTime(2024, 12, 30), result[0].Start);
+        Assert.Equal(new DateTime(2025, 1, 5), result[0].End);
+    }
+
+    [Fact]
+    public void ParseMapRanges_ShouldHandleMapPrecision()
+    {
+        var result = _parser.ParseMapRanges("21.3-23.1");
+        Assert.Single(result);
+        Assert.Equal(21, result[0].Start.Campaign);
+        Assert.Equal(3, result[0].Start.Map);
+        Assert.Equal(23, result[0].End.Campaign);
+        Assert.Equal(1, result[0].End.Map);
+    }
 }
 
 public class MapDownloaderTests

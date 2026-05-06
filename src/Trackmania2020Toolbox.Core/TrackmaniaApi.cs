@@ -9,12 +9,34 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
 {
     private readonly TrackmaniaIO _api = new(userAgent);
     private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private long _lastRequestTicks;
 
     public int DelayMs { get; set; }
 
-    private async Task ApplyDelayAsync()
+    internal async Task ApplyDelayAsync()
     {
-        if (DelayMs > 0) await Task.Delay(DelayMs);
+        if (DelayMs <= 0) return;
+
+        await _semaphore.WaitAsync();
+        try
+        {
+            long now = DateTime.UtcNow.Ticks;
+            long minIntervalTicks = DelayMs * TimeSpan.TicksPerMillisecond;
+            long elapsedTicks = now - _lastRequestTicks;
+
+            if (elapsedTicks < minIntervalTicks)
+            {
+                int delay = (int)((minIntervalTicks - elapsedTicks) / TimeSpan.TicksPerMillisecond);
+                if (delay > 0) await Task.Delay(delay);
+            }
+
+            _lastRequestTicks = DateTime.UtcNow.Ticks;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page)
@@ -129,6 +151,8 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
     {
         _api.Dispose();
         _tmx.Dispose();
+        _semaphore.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     private class TmxMapProxy(MapItem obj) : ITmxMap
