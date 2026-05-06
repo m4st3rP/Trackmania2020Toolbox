@@ -70,6 +70,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BrowserItem> _browserItems = new();
     private string _currentBrowserDirectory = string.Empty;
     private FileSystemWatcher? _watcher;
+    private CancellationTokenSource? _browserRefreshCts;
 
     public MainWindow()
     {
@@ -446,6 +447,14 @@ public partial class MainWindow : Window
 
     private async Task RefreshBrowserAsync()
     {
+        if (_browserRefreshCts != null)
+        {
+            _browserRefreshCts.Cancel();
+            _browserRefreshCts.Dispose();
+        }
+        _browserRefreshCts = new CancellationTokenSource();
+        var cts = _browserRefreshCts;
+
         if (string.IsNullOrEmpty(_currentBrowserDirectory) || !_fs.DirectoryExists(_currentBrowserDirectory))
         {
             _currentBrowserDirectory = _browserFolderInput.Text ?? _app.DefaultMapsFolder;
@@ -456,10 +465,11 @@ public partial class MainWindow : Window
             try { _fs.CreateDirectory(_currentBrowserDirectory); } catch { return; }
         }
 
-        if (_saveLastFolderCheck != null && _saveLastFolderCheck.IsChecked == true)
+        bool configChanged = false;
+        if (_saveLastFolderCheck != null && _saveLastFolderCheck.IsChecked == true && _config.Desktop.LastFolder != _currentBrowserDirectory)
         {
             _config.Desktop.LastFolder = _currentBrowserDirectory;
-            await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
+            configChanged = true;
         }
 
         _browserPathDisplay.Text = _currentBrowserDirectory;
@@ -468,18 +478,27 @@ public partial class MainWindow : Window
 
         try
         {
-            if (_saveLastSortCheck != null && _saveLastSortCheck.IsChecked == true)
+            if (_saveLastSortCheck != null && _saveLastSortCheck.IsChecked == true && _config.Desktop.LastSort != _browserSortCombo.SelectedIndex)
             {
                 _config.Desktop.LastSort = _browserSortCombo.SelectedIndex;
+                configChanged = true;
+            }
+
+            if (configChanged)
+            {
                 await _configService.SaveConfigAsync(_app.ScriptDirectory, _config);
             }
 
             bool desc = _browserSortCombo.SelectedIndex == 1;
             var currentDir = _currentBrowserDirectory;
-            var items = await Task.Run(() => _browserService.GetBrowserItems(currentDir, filter, desc).ToList());
+            var items = await Task.Run(() => _browserService.GetBrowserItems(currentDir, filter, desc).ToList(), cts.Token);
+
+            if (cts.IsCancellationRequested) return;
 
             Dispatcher.UIThread.Post(() =>
             {
+                if (cts.IsCancellationRequested) return;
+
                 _browserItems.Clear();
                 foreach (var item in items)
                 {
@@ -487,6 +506,7 @@ public partial class MainWindow : Window
                 }
             });
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             AppendLog($"Error refreshing browser: {ex.Message}{Environment.NewLine}");
@@ -550,6 +570,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _browserRefreshCts?.Cancel();
+        _browserRefreshCts?.Dispose();
         if (_configService is IDisposable disposable) disposable.Dispose();
         base.OnClosed(e);
     }

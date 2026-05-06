@@ -177,9 +177,10 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         var psi = new ProcessStartInfo
         {
             FileName = gamePath,
-            Arguments = $"\"{Path.GetFullPath(firstMap)}\"",
-            UseShellExecute = true
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(gamePath)
         };
+        psi.ArgumentList.Add(Path.GetFullPath(firstMap));
 
         try
         {

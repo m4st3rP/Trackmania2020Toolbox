@@ -20,6 +20,11 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
 
         for (int i = 0; i < mapList.Count; i++)
         {
+            if (i > 0 && config.Downloader.DownloadDelayMs > 0)
+            {
+                await Task.Delay(config.Downloader.DownloadDelayMs);
+            }
+
             var map = mapList[i];
             if (string.IsNullOrEmpty(map.FileUrl)) continue;
 
