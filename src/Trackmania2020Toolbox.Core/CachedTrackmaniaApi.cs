@@ -67,6 +67,12 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
+    public int DelayMs
+    {
+        get => _inner.DelayMs;
+        set => _inner.DelayMs = value;
+    }
+
     public void ResetCache()
     {
         if (_fs.DirectoryExists(_cacheDir))

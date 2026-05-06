@@ -14,7 +14,7 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
     {
         if (!_fs.DirectoryExists(downloadDir)) _fs.CreateDirectory(downloadDir);
 
-        var processedPaths = new List<string>();
+        List<string> processedPaths = [];
         var mapList = maps.ToList();
         _console.WriteLine($"Processing {mapList.Count} maps...");
 
@@ -75,7 +75,6 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
                 else _console.WriteLine("Saved.");
 
                 processedPaths.Add(filePath);
-                await Task.Delay(config.Downloader.DownloadDelayMs);
             }
             catch (Exception ex)
             {

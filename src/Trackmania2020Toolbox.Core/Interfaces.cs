@@ -16,6 +16,7 @@ public interface ITmxMapPack { int Id { get; } string Name { get; } }
 
 public interface ITrackmaniaApi : IDisposable
 {
+    int DelayMs { get; set; }
     Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page);
     Task<ICampaign> GetWeeklyShortCampaignAsync(int id);
     Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page);

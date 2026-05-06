@@ -136,23 +136,25 @@ public class ToolboxAppExpandedTests
     }
 
     [Fact]
-    public async Task HandleTmxRandomAsync_ShouldDownloadOneMap()
+    public async Task HandleTmxRandomAsync_ShouldDownloadOneMap_WithoutRedundantApiCall()
     {
         var map = new Mock<ITmxMap>();
         map.Setup(m => m.Id).Returns(777);
         map.Setup(m => m.Name).Returns("Lucky");
 
         _apiMock.Setup(a => a.GetRandomTmxMapAsync()).ReturnsAsync(map.Object);
-        _apiMock.Setup(a => a.GetTmxMapAsync(777)).ReturnsAsync(map.Object);
+        // We do NOT setup _apiMock.Setup(a => a.GetTmxMapAsync(777)) because it shouldn't be called anymore
         _apiMock.Setup(a => a.GetTmxMapUrl(777)).Returns("http://url");
 
         _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
-                       .ReturnsAsync(new List<string> { "path/to/map" });
+                       .ReturnsAsync(["path/to/map"]);
 
-        var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx-random" }, Config.Default);
+        var config = TrackmaniaCLI.ParseArguments(["--tmx-random"], Config.Default);
         await _app.HandleTmxRandomAsync(config);
 
         _apiMock.Verify(a => a.GetRandomTmxMapAsync(), Times.Once);
+        // Verify GetTmxMapAsync was NEVER called
+        _apiMock.Verify(a => a.GetTmxMapAsync(It.IsAny<int>()), Times.Never);
         _downloaderMock.Verify(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()), Times.Once);
     }
 

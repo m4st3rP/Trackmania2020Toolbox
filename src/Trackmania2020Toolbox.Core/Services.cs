@@ -19,26 +19,10 @@ public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConf
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
-            if (_fs.FileExists(configPath))
-            {
-                try
-                {
-                    var content = await _fs.ReadAllTextAsync(configPath);
-                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                    if (config != null) return config;
-                }
-                catch (Exception ex)
-                {
-                    Log($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
-                    Log($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                    if (ex.InnerException != null)
-                    {
-                        Log($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
-                    }
-                }
-            }
+            if (!_fs.FileExists(configPath)) return Config.Default;
 
-            return Config.Default;
+            var content = await _fs.ReadAllTextAsync(configPath);
+            return LoadConfigInternal(configPath, content);
         }
         finally
         {
@@ -52,26 +36,35 @@ public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConf
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
-            if (_fs.FileExists(configPath))
-            {
-                try
-                {
-                    var content = _fs.ReadAllText(configPath);
-                    var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
-                    if (config != null) return config;
-                }
-                catch (Exception ex)
-                {
-                    Log($"Warning: Failed to load config from {configPath}. Using defaults. Error: {ex.Message}");
-                }
-            }
+            if (!_fs.FileExists(configPath)) return Config.Default;
 
-            return Config.Default;
+            var content = _fs.ReadAllText(configPath);
+            return LoadConfigInternal(configPath, content);
         }
         finally
         {
             _semaphore.Release();
         }
+    }
+
+    private Config LoadConfigInternal(string configPath, string content)
+    {
+        try
+        {
+            var config = TomlSerializer.Deserialize<Config>(content, ToolboxConfigContext.Default.Config);
+            if (config != null) return config;
+        }
+        catch (Exception ex)
+        {
+            Log($"[ConfigService] ERROR: Failed to load configuration from '{configPath}'. The file might be corrupted or inaccessible. Falling back to default settings.");
+            Log($"[ConfigService] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Log($"[ConfigService] INNER EXCEPTION: {ex.InnerException.Message}");
+            }
+        }
+
+        return Config.Default;
     }
 
     public async Task SaveConfigAsync(string scriptDirectory, Config config)

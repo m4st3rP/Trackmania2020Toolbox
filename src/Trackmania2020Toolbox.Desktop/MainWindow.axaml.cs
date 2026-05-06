@@ -125,6 +125,7 @@ public partial class MainWindow : Window
 
         var dateTime = new RealDateTime();
         var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
+        rawApi.DelayMs = _config.Downloader.DownloadDelayMs;
         var api = new CachedTrackmaniaApi(rawApi, _fs, dateTime, scriptDir, _config.Cache);
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
         var fixer = new RealMapFixer();
@@ -169,7 +170,7 @@ public partial class MainWindow : Window
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();
         this.FindControl<Button>("ResetSettingsBtn")!.Click += async (_, _) =>
         {
-            var choice = await SelectItemAsync("Reset All Settings?", new[] { "Yes, reset everything", "No, keep my settings" });
+            var choice = await SelectItemAsync("Reset All Settings?", ["Yes, reset everything", "No, keep my settings"]);
             if (choice == 1) // "Yes, reset everything" is index 1 because SelectItemAsync returns 1-based index (0 is cancel)
             {
                 await ResetConfigAsync();
@@ -177,7 +178,7 @@ public partial class MainWindow : Window
         };
         this.FindControl<Button>("ResetCacheBtn")!.Click += async (_, _) =>
         {
-            var choice = await SelectItemAsync("Reset API Cache?", new[] { "Yes, clear all cached API data", "No, keep cache" });
+            var choice = await SelectItemAsync("Reset API Cache?", ["Yes, clear all cached API data", "No, keep cache"]);
             if (choice == 1) // "Yes, clear all cached API data" is index 1
             {
                 if (_app.Api is CachedTrackmaniaApi cachedApi)
@@ -201,7 +202,7 @@ public partial class MainWindow : Window
             var result = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
             {
                 Title = "Select Trackmania.exe",
-                FileTypeFilter = new[] { new Avalonia.Platform.Storage.FilePickerFileType("Executables") { Patterns = new[] { "*.exe" } } },
+                FileTypeFilter = [new Avalonia.Platform.Storage.FilePickerFileType("Executables") { Patterns = ["*.exe"] }],
                 AllowMultiple = false
             });
             if (result.Count > 0) _gamePathInput.Text = result[0].Path.LocalPath;
@@ -376,6 +377,10 @@ public partial class MainWindow : Window
 
     private void UpdateUiFromConfig()
     {
+        if (_app.Api is ITrackmaniaApi api)
+        {
+            api.DelayMs = _config.Downloader.DownloadDelayMs;
+        }
         _gamePathInput.Text = _config.App.SetGamePath;
         _browserFolderInput.Text = _config.Desktop.BrowserFolder;
         _downloadDelayMsInput.Value = _config.Downloader.DownloadDelayMs;

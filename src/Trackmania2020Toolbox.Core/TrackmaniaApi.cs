@@ -10,29 +10,78 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
     private readonly TrackmaniaIO _api = new(userAgent);
     private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
 
-    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page));
-    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id) => new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id));
-    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetWeeklyGrandCampaignsAsync(page));
-    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id) => new CampaignProxy(await _api.GetWeeklyGrandCampaignAsync(id));
-    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetSeasonalCampaignsAsync(page));
-    public async Task<ICampaign> GetSeasonalCampaignAsync(int id) => new CampaignProxy(await _api.GetSeasonalCampaignAsync(id));
-    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page) => new CampaignCollectionProxy(await _api.GetClubCampaignsAsync(page));
-    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId) => new CampaignProxy(await _api.GetClubCampaignAsync(clubId, campaignId));
+    public int DelayMs { get; set; }
+
+    private async Task ApplyDelayAsync()
+    {
+        if (DelayMs > 0) await Task.Delay(DelayMs);
+    }
+
+    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page)
+    {
+        await ApplyDelayAsync();
+        return new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page));
+    }
+
+    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id)
+    {
+        await ApplyDelayAsync();
+        return new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id));
+    }
+
+    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page)
+    {
+        await ApplyDelayAsync();
+        return new CampaignCollectionProxy(await _api.GetWeeklyGrandCampaignsAsync(page));
+    }
+
+    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id)
+    {
+        await ApplyDelayAsync();
+        return new CampaignProxy(await _api.GetWeeklyGrandCampaignAsync(id));
+    }
+
+    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page)
+    {
+        await ApplyDelayAsync();
+        return new CampaignCollectionProxy(await _api.GetSeasonalCampaignsAsync(page));
+    }
+
+    public async Task<ICampaign> GetSeasonalCampaignAsync(int id)
+    {
+        await ApplyDelayAsync();
+        return new CampaignProxy(await _api.GetSeasonalCampaignAsync(id));
+    }
+
+    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page)
+    {
+        await ApplyDelayAsync();
+        return new CampaignCollectionProxy(await _api.GetClubCampaignsAsync(page));
+    }
+
+    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId)
+    {
+        await ApplyDelayAsync();
+        return new CampaignProxy(await _api.GetClubCampaignAsync(clubId, campaignId));
+    }
 
     public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset)
     {
+        await ApplyDelayAsync();
         var result = await _api.GetTrackOfTheDaysAsync(monthOffset);
         return new TrackOfTheDayCollectionProxy(result);
     }
 
     public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId)
     {
+        await ApplyDelayAsync();
         var result = await _api.GetLeaderboardAsync(mapUid, accountId);
         return new LeaderboardProxy(result);
     }
 
     public async Task<ITmxMap?> GetTmxMapAsync(int id)
     {
+        await ApplyDelayAsync();
         var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Id = [id] });
         return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
     }
@@ -41,6 +90,7 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
 
     public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
     {
+        await ApplyDelayAsync();
         int? order = sort.ToLowerInvariant() switch
         {
             "name" => desc ? 2 : 1,
@@ -56,18 +106,21 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
 
     public async Task<ITmxMap?> GetRandomTmxMapAsync()
     {
+        await ApplyDelayAsync();
         var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Random = 1, Count = 1 });
         return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
     }
 
     public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id)
     {
+        await ApplyDelayAsync();
         var result = await _tmx.SearchMappacksAsync(new MX.SearchMappacksParameters { Id = [id] });
         return result.Results.Count > 0 ? new TmxMapPackProxy(result.Results[0]) : null;
     }
 
     public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id)
     {
+        await ApplyDelayAsync();
         var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { MappackId = id });
         return result.Results.Select(r => new TmxMapProxy(r));
     }
