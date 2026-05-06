@@ -510,26 +510,24 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
     public async Task<List<string>> HandleTmxMapsAsync(string input, Config config)
     {
-        List<string> downloadedPaths = [];
         var ids = ParseTmxIds(input);
-        if (!ids.Any()) return downloadedPaths;
+        if (!ids.Any()) return [];
 
-        var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
-        List<MapDownloadRecord> mapsToDownload = [];
-
+        List<ITmxMap> maps = [];
         foreach (var id in ids)
         {
             var map = await _api.GetTmxMapAsync(id);
-            if (map != null)
-            {
-                mapsToDownload.Add(new MapDownloadRecord(map.Name, null, _api.GetTmxMapUrl(map.Id), null));
-            }
-            else
-            {
-                _console.WriteLine($"Error: Could not find TMX map {id}.");
-            }
+            if (map != null) maps.Add(map);
+            else _console.WriteLine($"Error: Could not find TMX map {id}.");
         }
 
+        return await HandleTmxMapsAsync(maps, config);
+    }
+
+    public async Task<List<string>> HandleTmxMapsAsync(IEnumerable<ITmxMap> maps, Config config)
+    {
+        var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
+        var mapsToDownload = maps.Select(map => new MapDownloadRecord(map.Name, null, _api.GetTmxMapUrl(map.Id), null));
         return await _downloader.DownloadAndFixMapsAsync(mapsToDownload, downloadDir, config);
     }
 
@@ -574,14 +572,14 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         {
             var match = results[0];
             _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} by {match.AuthorName} (ID: {match.Id})");
-            return await HandleTmxMapsAsync(match.Id.ToString(), config);
+            return await HandleTmxMapsAsync([match], config);
         }
 
         var displayResults = results.Take(20).ToList();
         var choice = await _console.SelectItemAsync("Search results", displayResults.Select(r => $"{TextFormatter.Deformat(r.Name)} by {r.AuthorName} (ID: {r.Id}, Awards: {r.AwardCount}, DLs: {r.DownloadCount})"));
         if (choice > 0)
         {
-            return await HandleTmxMapsAsync(displayResults[choice - 1].Id.ToString(), config);
+            return await HandleTmxMapsAsync([displayResults[choice - 1]], config);
         }
 
         return [];
@@ -598,12 +596,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
 
         _console.WriteLine($"Random Map: {TextFormatter.Deformat(map.Name)} by {map.AuthorName} (ID: {map.Id})");
-        return await HandleTmxMapsAsync(map.Id.ToString(), config);
+        return await HandleTmxMapsAsync([map], config);
     }
 
     private List<int> ParseTmxIds(string input)
     {
-        var result = new HashSet<int>();
+        HashSet<int> result = [];
         var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
@@ -757,7 +755,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
             _console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
 
-            await Task.Delay(config.Downloader.DownloadDelayMs);
             var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
             if (fullCampaign?.Playlist == null)
             {
@@ -767,7 +764,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
             foreach (var map in fullCampaign.Playlist)
             {
-                await Task.Delay(config.Downloader.DownloadDelayMs);
                 var deformattedMapName = TextFormatter.Deformat(map.Name);
                 _console.Write($"  - {deformattedMapName}... ");
 
@@ -832,8 +828,8 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
     public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
     {
-        var processedPaths = new ConcurrentBag<string>();
-        var filesToProcess = new HashSet<string>();
+        ConcurrentBag<string> processedPaths = [];
+        HashSet<string> filesToProcess = [];
 
         if (extraFiles != null)
         {

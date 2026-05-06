@@ -54,7 +54,7 @@ public partial class InputParser(IConsole console) : IInputParser
 
     public List<int> ParseNumbers(string input)
     {
-        var result = new HashSet<int>();
+        HashSet<int> result = [];
         var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
