@@ -1,4 +1,5 @@
 using System.Buffers;
+using TmEssentials;
 
 namespace Trackmania2020Toolbox;
 
@@ -29,7 +30,8 @@ public static class PathUtilities
     {
         if (string.IsNullOrEmpty(folderName)) return folderName;
 
-        var span = folderName.AsSpan().Trim();
+        var deformatted = TextFormatter.Deformat(folderName);
+        var span = deformatted.AsSpan().Trim();
         if (span.IsEmpty) return string.Empty;
 
         return string.Create(span.Length, span, (dest, state) =>

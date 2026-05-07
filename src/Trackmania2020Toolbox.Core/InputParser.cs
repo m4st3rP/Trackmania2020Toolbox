@@ -37,7 +37,7 @@ public partial class InputParser(IConsole console) : IInputParser
     [GeneratedRegex(@"^(\d{1,2})[\.\/](\d{1,2})$", RegexOptions.None)]
     private static partial Regex MonthDayRegex();
 
-    [GeneratedRegex(@"\s*-\s*", RegexOptions.None)]
+    [GeneratedRegex(@"\s+-\s*|\s*-\s+", RegexOptions.None)]
     private static partial Regex RangeSeparatorRegex();
 
     public int ParseWeeklyShortsNum(string name)
@@ -55,15 +55,20 @@ public partial class InputParser(IConsole console) : IInputParser
     public List<int> ParseNumbers(string input)
     {
         HashSet<int> result = [];
-        var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        ForEachRange(input, [',', ' '], (s, e) =>
         {
-            if (part.Split('-') is [var sStr, var eStr] && int.TryParse(sStr, out var start) && int.TryParse(eStr, out var end))
+            if (e == null)
             {
-                for (var i = Math.Min(start, end); i <= Math.Max(start, end); i++) result.Add(i);
+                if (int.TryParse(s, out var num)) result.Add(num);
             }
-            else if (int.TryParse(part, out var num)) result.Add(num);
-        }
+            else
+            {
+                if (int.TryParse(s, out var start) && int.TryParse(e, out var end))
+                {
+                    for (var i = Math.Min(start, end); i <= Math.Max(start, end); i++) result.Add(i);
+                }
+            }
+        });
         return [.. result.OrderBy(n => n)];
     }
 
@@ -224,7 +229,8 @@ public partial class InputParser(IConsole console) : IInputParser
                     if (int.TryParse(endDayMatch.Value, out var endDay) && endDay >= 1)
                     {
                         var end = new DateTime(start.Value.Start.Year, start.Value.Start.Month, Math.Min(DateTime.DaysInMonth(start.Value.Start.Year, start.Value.Start.Month), endDay));
-                        ranges.Add((start.Value.Start, end));
+                        if (start.Value.Start <= end) ranges.Add((start.Value.Start, end));
+                        else ranges.Add((end, start.Value.Start));
                     }
                     else
                     {
@@ -320,12 +326,30 @@ public partial class InputParser(IConsole console) : IInputParser
 
     private static void ForEachRange(string input, char[] separators, Action<string, string?> action)
     {
-        var parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+        const string placeholder = "|RANGE|";
+        var normalized = RangeSeparatorRegex().Replace(input, placeholder);
+
+        var parts = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
-            var rangeParts = RangeSeparatorRegex().Split(part.Trim());
-            if (rangeParts is [var start, var end]) action(start, end);
-            else if (rangeParts is [var startOnly]) action(startOnly, null);
+            var p = part.Trim();
+            if (p.Contains(placeholder))
+            {
+                var rangeParts = p.Split(placeholder);
+                action(rangeParts[0].Trim(), rangeParts[1].Trim());
+            }
+            else
+            {
+                var rangeParts = p.Split('-');
+                if (rangeParts.Length == 2 && !Regex.IsMatch(p, @"^\d{4}-\d{1,2}(-\d{1,2})?$"))
+                {
+                    action(rangeParts[0].Trim(), rangeParts[1].Trim());
+                }
+                else
+                {
+                    action(p, null);
+                }
+            }
         }
     }
 

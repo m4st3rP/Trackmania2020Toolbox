@@ -57,6 +57,9 @@ public class UtilityTests
     [InlineData("folder/name ", "folder_name")]
     [InlineData("  ", "")]
     [InlineData("", "")]
+    [InlineData("$fffSummer 2024", "Summer 2024")]
+    [InlineData("$z$fffWinter 2025", "Winter 2025")]
+    [InlineData("$i$o$f00S$fffPRING 2023", "SPRING 2023")]
     public void SanitizeFolderName_ShouldHandleEdgeCases(string input, string expected)
     {
         var result = PathUtilities.SanitizeFolderName(input);
