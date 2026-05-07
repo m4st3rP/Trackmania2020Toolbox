@@ -59,4 +59,51 @@ public class BugReproductionTests
         Assert.Equal(new DateTime(2024, 1, 1), ranges[0].Start);
         Assert.Equal(new DateTime(2024, 1, 15), ranges[0].End);
     }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldHandleSpacesInRange()
+    {
+        var now = new DateTime(2024, 1, 1);
+        var ranges = _parser.ParseToTdRanges("2024.01.01 - 2024.01.15", now);
+        Assert.Single(ranges);
+        Assert.Equal(new DateTime(2024, 1, 1), ranges[0].Start);
+        Assert.Equal(new DateTime(2024, 1, 15), ranges[0].End);
+    }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldNormalizeRanges()
+    {
+        var now = new DateTime(2024, 1, 1);
+        var ranges = _parser.ParseToTdRanges("2024.01.15-2024.01.01", now);
+        Assert.Single(ranges);
+        Assert.Equal(new DateTime(2024, 1, 1), ranges[0].Start);
+        Assert.Equal(new DateTime(2024, 1, 15), ranges[0].End);
+    }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldNormalizeShortHandRanges()
+    {
+        var now = new DateTime(2024, 1, 1);
+        var ranges = _parser.ParseToTdRanges("2024.01.15-01", now);
+        Assert.Single(ranges);
+        Assert.Equal(new DateTime(2024, 1, 1), ranges[0].Start);
+        Assert.Equal(new DateTime(2024, 1, 15), ranges[0].End);
+    }
+
+    [Fact]
+    public void ParseToTdRanges_ShouldHandleDatesWithDashes()
+    {
+        var now = new DateTime(2024, 1, 1);
+        var ranges = _parser.ParseToTdRanges("2024-01-01 - 2024-01-15", now);
+        Assert.Single(ranges);
+        Assert.Equal(new DateTime(2024, 1, 1), ranges[0].Start);
+        Assert.Equal(new DateTime(2024, 1, 15), ranges[0].End);
+    }
+
+    [Fact]
+    public void ParseNumbers_ShouldHandleSpacesInRange()
+    {
+        var nums = _parser.ParseNumbers("1 , 3-5 , 10 - 12");
+        Assert.Equal([1, 3, 4, 5, 10, 11, 12], nums);
+    }
 }

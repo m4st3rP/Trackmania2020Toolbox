@@ -7,7 +7,7 @@ namespace Trackmania2020Toolbox;
 
 public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITrackmaniaApi
 {
-    private readonly TrackmaniaIO _api = new(userAgent);
+    private readonly TrackmaniaIO _api = new(httpClient, userAgent);
     private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private long _lastRequestTicks;
