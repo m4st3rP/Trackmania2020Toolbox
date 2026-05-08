@@ -103,40 +103,36 @@ public class RealBrowserService(IFileSystem fs) : IBrowserService
     {
         if (!_fs.DirectoryExists(directory)) return [];
 
-        List<BrowserItem> items = [];
-
         var dirs = _fs.GetDirectories(directory)
-            .Select(d => new { Path = d, Name = Path.GetFileName(d) });
+            .Select(Path.GetFileName)
+            .Where(name => string.IsNullOrEmpty(filter) || name!.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
-        var sortedDirs = descending ? dirs.OrderByDescending(d => d.Name) : dirs.OrderBy(d => d.Name);
+        var sortedDirs = descending ? dirs.OrderByDescending(d => d) : dirs.OrderBy(d => d);
 
-        foreach (var dir in sortedDirs)
-        {
-            if (!string.IsNullOrEmpty(filter) && !dir.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
-
-            items.Add(new BrowserItem(dir.Name, dir.Path, true));
-        }
+        var items = sortedDirs
+            .Select(name => new BrowserItem(name!, Path.Combine(directory, name!), true));
 
         var files = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
             .Select(f =>
             {
                 var fn = Path.GetFileName(f);
-                return new { Path = f, FileName = fn, DisplayName = TextFormatter.Deformat(fn) };
+                return (Path: f, FileName: fn, DisplayName: TextFormatter.Deformat(fn));
             });
 
-        var filteredFiles = files.Where(f =>
-            string.IsNullOrEmpty(filter) ||
-            f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-            f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
-        var sortedFiles = descending ? filteredFiles.OrderByDescending(f => f.DisplayName) : filteredFiles.OrderBy(f => f.DisplayName);
-
-        foreach (var file in sortedFiles)
+        if (!string.IsNullOrEmpty(filter))
         {
-            items.Add(new BrowserItem(file.DisplayName, file.Path, false));
+            files = files.Where(f =>
+                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
         }
 
-        return items;
+        var sortedFiles = descending
+            ? files.OrderByDescending(f => f.DisplayName)
+            .Select(f => new BrowserItem(f.DisplayName, f.Path, false))
+            : files.OrderBy(f => f.DisplayName)
+            .Select(f => new BrowserItem(f.DisplayName, f.Path, false));
+
+        return items.Concat(sortedFiles).ToList();
     }
 }
 

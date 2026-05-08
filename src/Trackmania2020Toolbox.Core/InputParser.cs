@@ -37,9 +37,6 @@ public partial class InputParser(IConsole console) : IInputParser
     [GeneratedRegex(@"^(\d{1,2})[\.\/](\d{1,2})$", RegexOptions.None)]
     private static partial Regex MonthDayRegex();
 
-    [GeneratedRegex(@"\s+-\s*|\s*-\s+", RegexOptions.None)]
-    private static partial Regex RangeSeparatorRegex();
-
     public int ParseWeeklyShortsNum(string name)
     {
         var match = WeeklyShortsRegex().Match(name);
@@ -324,32 +321,114 @@ public partial class InputParser(IConsole console) : IInputParser
         return null;
     }
 
-    private static void ForEachRange(string input, char[] separators, Action<string, string?> action)
+    internal static void ForEachRange(string input, char[] separators, Action<string, string?> action)
     {
-        const string placeholder = "|RANGE|";
-        var normalized = RangeSeparatorRegex().Replace(input, placeholder);
+        if (string.IsNullOrWhiteSpace(input)) return;
 
-        var parts = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        var inputSpan = input.AsSpan();
+        var sepSearchValues = System.Buffers.SearchValues.Create(separators);
+
+        while (inputSpan.Length > 0)
         {
-            var p = part.Trim();
-            if (p.Contains(placeholder))
+            int sepIdx = -1;
+            int currentOffset = 0;
+            var currentSpan = inputSpan;
+
+            // Manual search to correctly handle " - " as a range separator, not a part separator
+            while (true)
             {
-                var rangeParts = p.Split(placeholder);
-                action(rangeParts[0].Trim(), rangeParts[1].Trim());
+                int foundIdx = currentSpan.IndexOfAny(sepSearchValues);
+                if (foundIdx == -1) break;
+
+                // Check if this separator is actually part of " - "
+                if (currentSpan[foundIdx] == ' ' && foundIdx + 2 < currentSpan.Length &&
+                    currentSpan[foundIdx + 1] == '-' && currentSpan[foundIdx + 2] == ' ')
+                {
+                    // This is a range separator, skip it
+                    currentSpan = currentSpan[(foundIdx + 3)..];
+                    currentOffset += foundIdx + 3;
+                    continue;
+                }
+
+                sepIdx = currentOffset + foundIdx;
+                break;
+            }
+
+            ReadOnlySpan<char> part;
+            if (sepIdx == -1)
+            {
+                part = inputSpan;
+                inputSpan = ReadOnlySpan<char>.Empty;
             }
             else
             {
-                var rangeParts = p.Split('-');
-                if (rangeParts.Length == 2 && !Regex.IsMatch(p, @"^\d{4}-\d{1,2}(-\d{1,2})?$"))
+                part = inputSpan[..sepIdx];
+                inputSpan = inputSpan[(sepIdx + 1)..];
+            }
+
+            part = part.Trim();
+            if (part.IsEmpty) continue;
+
+            int dashIdx = -1;
+            bool isExplicitRange = false;
+
+            // 1. Look for explicit " - " range separator within the part
+            for (int i = 0; i < part.Length; i++)
+            {
+                if (part[i] == '-' && (i > 0 && char.IsWhiteSpace(part[i - 1]) || i < part.Length - 1 && char.IsWhiteSpace(part[i + 1])))
                 {
-                    action(rangeParts[0].Trim(), rangeParts[1].Trim());
+                    dashIdx = i;
+                    isExplicitRange = true;
+                    break;
+                }
+            }
+
+            if (isExplicitRange)
+            {
+                action(part[..dashIdx].Trim().ToString(), part[(dashIdx + 1)..].Trim().ToString());
+            }
+            else
+            {
+                // 2. Handle compact range "A-B" while protecting ISO dates
+                dashIdx = part.IndexOf('-');
+                if (dashIdx != -1 && !IsIsoDate(part))
+                {
+                    action(part[..dashIdx].Trim().ToString(), part[(dashIdx + 1)..].Trim().ToString());
                 }
                 else
                 {
-                    action(p, null);
+                    action(part.ToString(), null);
                 }
             }
+        }
+    }
+
+    private static bool IsIsoDate(ReadOnlySpan<char> part)
+    {
+        if (part.Length < 6) return false;
+        if (!char.IsDigit(part[0]) || !char.IsDigit(part[1]) || !char.IsDigit(part[2]) || !char.IsDigit(part[3])) return false;
+        if (part[4] != '-') return false;
+
+        int firstDash = 4;
+        int secondDash = part[(firstDash + 1)..].IndexOf('-');
+        if (secondDash == -1)
+        {
+            var month = part[(firstDash + 1)..];
+            if (month.Length is < 1 or > 2) return false;
+            foreach (var c in month) if (!char.IsDigit(c)) return false;
+            return true;
+        }
+        else
+        {
+            secondDash += firstDash + 1;
+            var month = part[(firstDash + 1)..secondDash];
+            if (month.Length is < 1 or > 2) return false;
+            foreach (var c in month) if (!char.IsDigit(c)) return false;
+
+            var day = part[(secondDash + 1)..];
+            if (day.Length is < 1 or > 2) return false;
+            foreach (var c in day) if (!char.IsDigit(c)) return false;
+            return true;
         }
     }
 
