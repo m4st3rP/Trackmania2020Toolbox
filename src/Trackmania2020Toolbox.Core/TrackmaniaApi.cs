@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http;
 using ManiaAPI.TrackmaniaIO;
 using ManiaAPI.TMX;
@@ -10,7 +11,7 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
     private readonly TrackmaniaIO _api = new(httpClient, userAgent);
     private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private long _lastRequestTicks;
+    private long _lastRequestTimestamp;
 
     public int DelayMs { get; set; }
 
@@ -21,9 +22,9 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
         await _semaphore.WaitAsync();
         try
         {
-            long now = DateTime.UtcNow.Ticks;
+            long now = Stopwatch.GetTimestamp();
+            long elapsedTicks = Stopwatch.GetElapsedTime(_lastRequestTimestamp, now).Ticks;
             long minIntervalTicks = DelayMs * TimeSpan.TicksPerMillisecond;
-            long elapsedTicks = now - _lastRequestTicks;
 
             if (elapsedTicks < minIntervalTicks)
             {
@@ -31,7 +32,7 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
                 if (delay > 0) await Task.Delay(delay);
             }
 
-            _lastRequestTicks = DateTime.UtcNow.Ticks;
+            _lastRequestTimestamp = Stopwatch.GetTimestamp();
         }
         finally
         {

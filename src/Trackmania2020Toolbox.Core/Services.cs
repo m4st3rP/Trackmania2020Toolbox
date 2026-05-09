@@ -173,6 +173,8 @@ public class RealMapFixer : IMapFixer
         if (!fixerCfg.UpdateTitle && !fixerCfg.ConvertPlatformMapType) return false;
 
         var gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath);
+        if (gbx?.Node == null) return false;
+
         var map = gbx.Node;
         bool changed = false;
 
