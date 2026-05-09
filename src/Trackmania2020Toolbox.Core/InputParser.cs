@@ -404,6 +404,46 @@ public partial class InputParser(IConsole console) : IInputParser
         return campaignName;
     }
 
+    public List<int> ParseTmxIds(string input)
+    {
+        HashSet<int> result = [];
+        var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+            bool parsed = false;
+            if (trimmed.StartsWith("https://trackmania.exchange/maps/", StringComparison.OrdinalIgnoreCase))
+            {
+                var match = Regex.Match(trimmed, @"/maps/(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
+                {
+                    result.Add(id);
+                    parsed = true;
+                }
+            }
+            else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
+            {
+                var match = Regex.Match(trimmed, @"/mappack/(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
+                {
+                    result.Add(id);
+                    parsed = true;
+                }
+            }
+            else if (int.TryParse(trimmed, out var num))
+            {
+                result.Add(num);
+                parsed = true;
+            }
+
+            if (!parsed)
+            {
+                console.WriteLine($"Error: Could not parse TMX ID or URL '{trimmed}'.");
+            }
+        }
+        return [.. result];
+    }
+
     private static int GetSeasonOrder(string season) => season.ToLower() switch
     {
         "winter" => 1,

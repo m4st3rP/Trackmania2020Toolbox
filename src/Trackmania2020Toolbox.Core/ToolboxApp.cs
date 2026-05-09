@@ -43,60 +43,60 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                 return;
         }
 
-        List<string> mapPaths = [];
+        HashSet<string> mapPaths = [];
         bool downloadActionTaken = false;
 
         if (dlCfg.WeeklyShorts != null)
         {
-            mapPaths.AddRange(await HandleWeeklyShortsAsync(dlCfg.WeeklyShorts, config));
+            foreach (var path in await HandleWeeklyShortsAsync(dlCfg.WeeklyShorts, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (dlCfg.WeeklyGrands != null)
         {
-            mapPaths.AddRange(await HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands, config));
+            foreach (var path in await HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (dlCfg.Seasonal != null)
         {
-            mapPaths.AddRange(await HandleSeasonalAsync(dlCfg.Seasonal, config));
+            foreach (var path in await HandleSeasonalAsync(dlCfg.Seasonal, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (dlCfg.ClubCampaign != null)
         {
-            mapPaths.AddRange(await HandleClubCampaignAsync(dlCfg.ClubCampaign, config));
+            foreach (var path in await HandleClubCampaignAsync(dlCfg.ClubCampaign, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (dlCfg.ToTDDate != null)
         {
-            mapPaths.AddRange(await HandleTrackOfTheDayAsync(dlCfg.ToTDDate, config));
+            foreach (var path in await HandleTrackOfTheDayAsync(dlCfg.ToTDDate, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (tmxCfg.TmxMaps != null)
         {
-            mapPaths.AddRange(await HandleTmxMapsAsync(tmxCfg.TmxMaps, config));
+            foreach (var path in await HandleTmxMapsAsync(tmxCfg.TmxMaps, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (tmxCfg.TmxPacks != null)
         {
-            mapPaths.AddRange(await HandleTmxPacksAsync(tmxCfg.TmxPacks, config));
+            foreach (var path in await HandleTmxPacksAsync(tmxCfg.TmxPacks, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null)
         {
-            mapPaths.AddRange(await HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config));
+            foreach (var path in await HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
         if (tmxCfg.TmxRandom)
         {
-            mapPaths.AddRange(await HandleTmxRandomAsync(config));
+            foreach (var path in await HandleTmxRandomAsync(config)) mapPaths.Add(path);
             downloadActionTaken = true;
         }
 
@@ -109,15 +109,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         if (fixerCfg.ExplicitFolder || appCfg.ExtraPaths.Count > 0 || (!downloadActionTaken && appCfg.SetGamePath == null))
         {
             var fixedPaths = await RunBatchFixerAsync(config, appCfg.ExtraPaths);
-            foreach (var path in fixedPaths)
-            {
-                if (!mapPaths.Contains(path)) mapPaths.Add(path);
-            }
+            foreach (var path in fixedPaths) mapPaths.Add(path);
         }
 
         if (appCfg.Play)
         {
-            await LaunchGameAsync(mapPaths, config);
+            await LaunchGameAsync([.. mapPaths], config);
         }
     }
 
@@ -511,7 +508,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
     public async Task<List<string>> HandleTmxMapsAsync(string input, Config config)
     {
-        var ids = ParseTmxIds(input);
+        var ids = _parser.ParseTmxIds(input);
         if (!ids.Any()) return [];
 
         List<ITmxMap> maps = [];
@@ -535,7 +532,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
     public async Task<List<string>> HandleTmxPacksAsync(string input, Config config)
     {
         List<string> downloadedPaths = [];
-        var ids = ParseTmxIds(input);
+        var ids = _parser.ParseTmxIds(input);
         if (!ids.Any()) return downloadedPaths;
 
         foreach (var id in ids)
@@ -600,45 +597,6 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         return await HandleTmxMapsAsync([map], config);
     }
 
-    private List<int> ParseTmxIds(string input)
-    {
-        HashSet<int> result = [];
-        var parts = input.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
-        {
-            var trimmed = part.Trim();
-            bool parsed = false;
-            if (trimmed.StartsWith("https://trackmania.exchange/maps/", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = Regex.Match(trimmed, @"/maps/(\d+)");
-                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
-                {
-                    result.Add(id);
-                    parsed = true;
-                }
-            }
-            else if (trimmed.StartsWith("https://trackmania.exchange/mappack/", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = Regex.Match(trimmed, @"/mappack/(\d+)");
-                if (match.Success && int.TryParse(match.Groups[1].Value, out var id))
-                {
-                    result.Add(id);
-                    parsed = true;
-                }
-            }
-            else if (int.TryParse(trimmed, out var num))
-            {
-                result.Add(num);
-                parsed = true;
-            }
-
-            if (!parsed)
-            {
-                _console.WriteLine($"Error: Could not parse TMX ID or URL '{trimmed}'.");
-            }
-        }
-        return [.. result];
-    }
 
     public async Task<List<string>> HandleTrackOfTheDayAsync(string dateInput, Config config)
     {

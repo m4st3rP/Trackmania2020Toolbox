@@ -90,6 +90,7 @@ public interface IInputParser
     SeasonalRef? ParseSeasonalRef(string s);
     SeasonalRef? ParseSeasonalRefFromCampaignName(string campaignName);
     List<(DateTime Start, DateTime End)> ParseToTdRanges(string input, DateTime now);
+    List<int> ParseTmxIds(string input);
     string FormatSeasonalFolderName(string campaignName);
 }
 

@@ -126,6 +126,8 @@ public class ToolboxAppExpandedTests
         _apiMock.Setup(a => a.GetTmxMapPackMapsAsync(1)).ReturnsAsync(new[] { map1.Object, map2.Object });
         _apiMock.Setup(a => a.GetTmxMapUrl(It.IsAny<int>())).Returns("http://tmx/gbx");
 
+        _parserMock.Setup(p => p.ParseTmxIds("1")).Returns([1]);
+
         _downloaderMock.Setup(d => d.DownloadAndFixMapsAsync(It.IsAny<IEnumerable<MapDownloadRecord>>(), It.IsAny<string>(), It.IsAny<Config>()))
                        .ReturnsAsync(new List<string> { "path/to/map" });
 
@@ -212,7 +214,7 @@ public class ToolboxAppExpandedTests
     public async Task HandleTmxMapsAsync_ShouldHandleNotFound()
     {
         _apiMock.Setup(a => a.GetTmxMapAsync(It.IsAny<int>())).ReturnsAsync((ITmxMap?)null);
-        _parserMock.Setup(p => p.ParseNumbers(It.IsAny<string>())).Returns(new List<int> { 999 });
+        _parserMock.Setup(p => p.ParseTmxIds(It.IsAny<string>())).Returns(new List<int> { 999 });
 
         var config = TrackmaniaCLI.ParseArguments(new[] { "--tmx", "999" }, Config.Default);
 
