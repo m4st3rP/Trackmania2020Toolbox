@@ -37,6 +37,9 @@ public partial class InputParser(IConsole console) : IInputParser
     [GeneratedRegex(@"^(\d{1,2})[\.\/](\d{1,2})$", RegexOptions.None)]
     private static partial Regex MonthDayRegex();
 
+    [GeneratedRegex(@"\s+-\s*|\s*-\s+", RegexOptions.None)]
+    private static partial Regex RangeSeparatorRegex();
+
     public int ParseWeeklyShortsNum(string name)
     {
         var match = WeeklyShortsRegex().Match(name);
@@ -261,8 +264,8 @@ public partial class InputParser(IConsole console) : IInputParser
                         var finalStart = start.Value.Start;
                         var finalEnd = endResult.Value.End;
 
-                        // Rollover check for cases like 12.31 - 01.01 (where 01.01 would naturally be same year)
-                        if (MonthDayRegex().IsMatch(endStr) && finalEnd < finalStart)
+                        // Rollover check for cases like 12.31 - 01.01
+                        if ((MonthDayRegex().IsMatch(endStr) || ToTdDateMonthRegex().IsMatch(endStr)) && finalEnd < finalStart)
                         {
                             finalEnd = finalEnd.AddYears(1);
                         }
@@ -325,111 +328,67 @@ public partial class InputParser(IConsole console) : IInputParser
     {
         if (string.IsNullOrWhiteSpace(input)) return;
 
-        var inputSpan = input.AsSpan();
-        var sepSearchValues = System.Buffers.SearchValues.Create(separators);
+        const string placeholder = "|RANGE|";
+        string normalized = RangeSeparatorRegex().Replace(input, placeholder);
 
-        while (inputSpan.Length > 0)
+        var parts = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var partStr in parts)
         {
-            int sepIdx = -1;
-            int currentOffset = 0;
-            var currentSpan = inputSpan;
-
-            // Manual search to correctly handle " - " as a range separator, not a part separator
-            while (true)
+            if (partStr.Contains(placeholder))
             {
-                int foundIdx = currentSpan.IndexOfAny(sepSearchValues);
-                if (foundIdx == -1) break;
-
-                // Check if this separator is actually part of " - "
-                if (currentSpan[foundIdx] == ' ' && foundIdx + 2 < currentSpan.Length &&
-                    currentSpan[foundIdx + 1] == '-' && currentSpan[foundIdx + 2] == ' ')
-                {
-                    // This is a range separator, skip it
-                    currentSpan = currentSpan[(foundIdx + 3)..];
-                    currentOffset += foundIdx + 3;
-                    continue;
-                }
-
-                sepIdx = currentOffset + foundIdx;
-                break;
+                var rangeParts = partStr.Split(placeholder);
+                action(rangeParts[0].Trim(), rangeParts[1].Trim());
+                continue;
             }
 
-            ReadOnlySpan<char> part;
-            if (sepIdx == -1)
-            {
-                part = inputSpan;
-                inputSpan = ReadOnlySpan<char>.Empty;
-            }
-            else
-            {
-                part = inputSpan[..sepIdx];
-                inputSpan = inputSpan[(sepIdx + 1)..];
-            }
-
-            part = part.Trim();
+            var part = partStr.AsSpan().Trim();
             if (part.IsEmpty) continue;
 
             int dashIdx = -1;
-            bool isExplicitRange = false;
-
-            // 1. Look for explicit " - " range separator within the part
             for (int i = 0; i < part.Length; i++)
             {
-                if (part[i] == '-' && (i > 0 && char.IsWhiteSpace(part[i - 1]) || i < part.Length - 1 && char.IsWhiteSpace(part[i + 1])))
+                if (part[i] == '-')
                 {
+                    if (IsDateSeparator(part, i)) continue;
                     dashIdx = i;
-                    isExplicitRange = true;
                     break;
                 }
             }
 
-            if (isExplicitRange)
+            if (dashIdx != -1 && dashIdx < part.Length - 1)
             {
-                action(part[..dashIdx].Trim().ToString(), part[(dashIdx + 1)..].Trim().ToString());
+                action(part[..dashIdx].ToString(), part[(dashIdx + 1)..].ToString());
             }
             else
             {
-                // 2. Handle compact range "A-B" while protecting ISO dates
-                dashIdx = part.IndexOf('-');
-                if (dashIdx != -1 && !IsIsoDate(part))
-                {
-                    action(part[..dashIdx].Trim().ToString(), part[(dashIdx + 1)..].Trim().ToString());
-                }
-                else
-                {
-                    action(part.ToString(), null);
-                }
+                action(part.ToString(), null);
             }
         }
     }
 
-    private static bool IsIsoDate(ReadOnlySpan<char> part)
+    private static bool IsDateSeparator(ReadOnlySpan<char> part, int idx)
     {
-        if (part.Length < 6) return false;
-        if (!char.IsDigit(part[0]) || !char.IsDigit(part[1]) || !char.IsDigit(part[2]) || !char.IsDigit(part[3])) return false;
-        if (part[4] != '-') return false;
-
-        int firstDash = 4;
-        int secondDash = part[(firstDash + 1)..].IndexOf('-');
-        if (secondDash == -1)
+        if (part.Length <= 4) return false;
+        if (idx == 4)
         {
-            var month = part[(firstDash + 1)..];
-            if (month.Length is < 1 or > 2) return false;
-            foreach (var c in month) if (!char.IsDigit(c)) return false;
+            if (idx + 1 >= part.Length || !char.IsDigit(part[idx + 1])) return false;
+            for (int i = 0; i < 4; i++) if (!char.IsDigit(part[i])) return false;
+            if (part.Length >= 9 && char.IsDigit(part[5]) && char.IsDigit(part[6]) && char.IsDigit(part[7]) && char.IsDigit(part[8]))
+                return false;
             return true;
         }
-        else
+        if (idx > 4 && idx <= 7)
         {
-            secondDash += firstDash + 1;
-            var month = part[(firstDash + 1)..secondDash];
-            if (month.Length is < 1 or > 2) return false;
-            foreach (var c in month) if (!char.IsDigit(c)) return false;
-
-            var day = part[(secondDash + 1)..];
-            if (day.Length is < 1 or > 2) return false;
-            foreach (var c in day) if (!char.IsDigit(c)) return false;
+            char sep4 = part[4];
+            if (sep4 != '-' && sep4 != '.' && sep4 != '/') return false;
+            for (int i = 0; i < 4; i++) if (!char.IsDigit(part[i])) return false;
+            for (int i = 5; i < idx; i++) if (!char.IsDigit(part[i])) return false;
+            if (idx + 1 >= part.Length || !char.IsDigit(part[idx + 1])) return false;
+            if (idx + 4 < part.Length && char.IsDigit(part[idx + 1]) && char.IsDigit(part[idx + 2]) && char.IsDigit(part[idx + 3]) && char.IsDigit(part[idx + 4]))
+                return false;
             return true;
         }
+        return false;
     }
 
     public string FormatSeasonalFolderName(string campaignName)

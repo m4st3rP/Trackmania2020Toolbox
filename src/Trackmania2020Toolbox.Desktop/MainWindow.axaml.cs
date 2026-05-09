@@ -283,7 +283,7 @@ public partial class MainWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
-            _logOutput.AppendText(text);
+            _logOutput.Text += text;
             _logOutput.CaretIndex = _logOutput.Text?.Length ?? 0;
         });
     }
