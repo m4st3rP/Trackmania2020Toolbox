@@ -46,58 +46,26 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         HashSet<string> mapPaths = [];
         bool downloadActionTaken = false;
 
-        if (dlCfg.WeeklyShorts != null)
+        var downloadHandlers = new List<(bool Condition, Func<Task<List<string>>> Action)>
         {
-            foreach (var path in await HandleWeeklyShortsAsync(dlCfg.WeeklyShorts, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
+            (dlCfg.WeeklyShorts != null, () => HandleWeeklyShortsAsync(dlCfg.WeeklyShorts!, config)),
+            (dlCfg.WeeklyGrands != null, () => HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands!, config)),
+            (dlCfg.Seasonal != null, () => HandleSeasonalAsync(dlCfg.Seasonal!, config)),
+            (dlCfg.ClubCampaign != null, () => HandleClubCampaignAsync(dlCfg.ClubCampaign!, config)),
+            (dlCfg.ToTDDate != null, () => HandleTrackOfTheDayAsync(dlCfg.ToTDDate!, config)),
+            (tmxCfg.TmxMaps != null, () => HandleTmxMapsAsync(tmxCfg.TmxMaps!, config)),
+            (tmxCfg.TmxPacks != null, () => HandleTmxPacksAsync(tmxCfg.TmxPacks!, config)),
+            (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null, () => HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config)),
+            (tmxCfg.TmxRandom, () => HandleTmxRandomAsync(config))
+        };
 
-        if (dlCfg.WeeklyGrands != null)
+        foreach (var (condition, action) in downloadHandlers)
         {
-            foreach (var path in await HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (dlCfg.Seasonal != null)
-        {
-            foreach (var path in await HandleSeasonalAsync(dlCfg.Seasonal, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (dlCfg.ClubCampaign != null)
-        {
-            foreach (var path in await HandleClubCampaignAsync(dlCfg.ClubCampaign, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (dlCfg.ToTDDate != null)
-        {
-            foreach (var path in await HandleTrackOfTheDayAsync(dlCfg.ToTDDate, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (tmxCfg.TmxMaps != null)
-        {
-            foreach (var path in await HandleTmxMapsAsync(tmxCfg.TmxMaps, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (tmxCfg.TmxPacks != null)
-        {
-            foreach (var path in await HandleTmxPacksAsync(tmxCfg.TmxPacks, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null)
-        {
-            foreach (var path in await HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config)) mapPaths.Add(path);
-            downloadActionTaken = true;
-        }
-
-        if (tmxCfg.TmxRandom)
-        {
-            foreach (var path in await HandleTmxRandomAsync(config)) mapPaths.Add(path);
-            downloadActionTaken = true;
+            if (condition)
+            {
+                foreach (var path in await action()) mapPaths.Add(path);
+                downloadActionTaken = true;
+            }
         }
 
         if (dlCfg.ExportMedalsPlayerId != null)

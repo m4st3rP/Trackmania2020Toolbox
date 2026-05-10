@@ -150,8 +150,6 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
 
     public void Dispose()
     {
-        _api.Dispose();
-        _tmx.Dispose();
         _semaphore.Dispose();
         GC.SuppressFinalize(this);
     }
