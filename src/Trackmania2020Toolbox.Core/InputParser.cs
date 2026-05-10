@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.RegularExpressions;
 
 namespace Trackmania2020Toolbox;
@@ -39,6 +40,8 @@ public partial class InputParser(IConsole console) : IInputParser
 
     [GeneratedRegex(@"\s+-\s*|\s*-\s+", RegexOptions.None)]
     private static partial Regex RangeSeparatorRegex();
+
+    private static readonly SearchValues<char> DateSeparators = SearchValues.Create("-./");
 
     public int ParseWeeklyShortsNum(string name)
     {
@@ -379,8 +382,7 @@ public partial class InputParser(IConsole console) : IInputParser
         }
         if (idx > 4 && idx <= 7)
         {
-            char sep4 = part[4];
-            if (sep4 != '-' && sep4 != '.' && sep4 != '/') return false;
+            if (!DateSeparators.Contains(part[4])) return false;
             for (int i = 0; i < 4; i++) if (!char.IsDigit(part[i])) return false;
             for (int i = 5; i < idx; i++) if (!char.IsDigit(part[i])) return false;
             if (idx + 1 >= part.Length || !char.IsDigit(part[idx + 1])) return false;
