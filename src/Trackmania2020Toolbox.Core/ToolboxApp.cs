@@ -604,12 +604,18 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
 
         List<string> downloadedPaths = [];
-        List<DateTime> allDaysToDownload = [];
+        HashSet<DateTime> allDaysToDownload = [];
         foreach (var range in ranges)
         {
             for (var d = range.Start; d <= range.End; d = d.AddDays(1))
             {
-                if (!allDaysToDownload.Contains(d)) allDaysToDownload.Add(d);
+                // Skip future maps
+                if (d > now.Date) continue;
+
+                // Today's map is only available after TotdReleaseHour
+                if (d == now.Date && now.Hour < TotdReleaseHour) continue;
+
+                allDaysToDownload.Add(d);
             }
         }
 
