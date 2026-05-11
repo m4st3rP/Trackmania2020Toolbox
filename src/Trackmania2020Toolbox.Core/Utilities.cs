@@ -15,13 +15,15 @@ public static class PathUtilities
     {
         if (string.IsNullOrEmpty(input)) return input;
 
-        return string.Create(input.Length, input, (span, state) =>
+        var span = input.AsSpan();
+        if (span.IndexOfAny(InvalidFileNameChars) == -1) return input;
+
+        return string.Create(input.Length, input, (dest, state) =>
         {
-            state.AsSpan().CopyTo(span);
-            int index;
-            while ((index = span.IndexOfAny(InvalidFileNameChars)) != -1)
+            for (int i = 0; i < state.Length; i++)
             {
-                span[index] = '_';
+                char c = state[i];
+                dest[i] = InvalidFileNameChars.Contains(c) ? '_' : c;
             }
         });
     }
@@ -31,16 +33,18 @@ public static class PathUtilities
         if (string.IsNullOrEmpty(folderName)) return folderName;
 
         var deformatted = TextFormatter.Deformat(folderName);
-        var span = deformatted.AsSpan().Trim();
-        if (span.IsEmpty) return string.Empty;
+        var trimmed = deformatted.Trim();
+        if (trimmed.Length == 0) return string.Empty;
 
-        return string.Create(span.Length, span, (dest, state) =>
+        var span = trimmed.AsSpan();
+        if (span.IndexOfAny(InvalidFileNameChars) == -1) return trimmed;
+
+        return string.Create(trimmed.Length, trimmed, (dest, state) =>
         {
-            state.CopyTo(dest);
-            int index;
-            while ((index = dest.IndexOfAny(InvalidFileNameChars)) != -1)
+            for (int i = 0; i < state.Length; i++)
             {
-                dest[index] = '_';
+                char c = state[i];
+                dest[i] = InvalidFileNameChars.Contains(c) ? '_' : c;
             }
         });
     }
