@@ -12,7 +12,8 @@ public class TrackmaniaApiTests
         // Arrange
         var httpClient = new HttpClient();
         var userAgent = "TestUserAgent";
-        var wrapper = new TrackmaniaApiWrapper(httpClient, userAgent);
+        var console = new Moq.Mock<IConsole>().Object;
+        var wrapper = new TrackmaniaApiWrapper(httpClient, userAgent, console);
 
         // Act
         wrapper.Dispose();

@@ -106,4 +106,49 @@ public class BugReproductionTests
         var nums = _parser.ParseNumbers("1 , 3-5 , 10 - 12");
         Assert.Equal([1, 3, 4, 5, 10, 11, 12], nums);
     }
+
+    [Fact]
+    public async Task GetTrackOfTheDaysAsync_ShouldHaveCacheCollision_WhenMonthChanges()
+    {
+        // Arrange
+        var mockInnerApi = new Mock<ITrackmaniaApi>();
+        var mockFs = new Mock<IFileSystem>();
+        var mockDateTime = new Mock<IDateTime>();
+        var config = new CacheConfig { Enabled = true, CacheDirectory = ".cache" };
+        var scriptDir = "/test";
+
+        var janData = new TrackOfTheDayCollectionDto { Year = 2024, Month = 1 };
+        var febData = new TrackOfTheDayCollectionDto { Year = 2024, Month = 2 };
+
+        // 1. Initial request in January, just before rollover
+        mockDateTime.Setup(d => d.UtcNow).Returns(new DateTime(2024, 1, 31, 23, 59, 0));
+        mockInnerApi.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(janData);
+
+        // Simulating file system for cache
+        var files = new Dictionary<string, string>();
+        mockFs.Setup(f => f.DirectoryExists(It.IsAny<string>())).Returns(true);
+        mockFs.Setup(f => f.FileExists(It.IsAny<string>())).Returns<string>(path => files.ContainsKey(path));
+        mockFs.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).Returns<string>(path => Task.FromResult(files[path]));
+        mockFs.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Callback<string, string>((path, content) => files[path] = content)
+            .Returns(Task.CompletedTask);
+
+        var cachedApi = new CachedTrackmaniaApi(mockInnerApi.Object, mockFs.Object, mockDateTime.Object, scriptDir, config);
+
+        // Act
+        var result1 = await cachedApi.GetTrackOfTheDaysAsync(0);
+
+        // 2. Move to February, just after rollover
+        // Only 2 minutes have passed, well within the 60-minute DynamicExpirationMinutes
+        mockDateTime.Setup(d => d.UtcNow).Returns(new DateTime(2024, 2, 1, 0, 1, 0));
+        mockInnerApi.Setup(a => a.GetTrackOfTheDaysAsync(0)).ReturnsAsync(febData);
+
+        var result2 = await cachedApi.GetTrackOfTheDaysAsync(0);
+
+        // Assert
+        Assert.Equal(1, result1.Month);
+
+        // After fix: result2.Month should be 2 because the cache key includes the absolute year/month
+        Assert.Equal(2, result2.Month);
+    }
 }

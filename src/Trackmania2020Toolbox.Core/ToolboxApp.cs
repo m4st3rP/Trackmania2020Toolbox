@@ -718,6 +718,10 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                         _console.WriteLine("No record.");
                     }
                 }
+                catch (TaskCanceledException)
+                {
+                    _console.WriteLine("Request timed out.");
+                }
                 catch (HttpRequestException ex)
                 {
                     if (ex.StatusCode == System.Net.HttpStatusCode.InternalServerError || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
