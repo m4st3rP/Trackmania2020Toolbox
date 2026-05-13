@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 
 namespace Trackmania2020Toolbox;
 
@@ -29,9 +30,9 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
         }
     }
 
-    private async Task<T> GetCachedAsync<T>(string key, int expirationMinutes, Func<Task<T>> fetchFunc, JsonTypeInfo<CacheEntry<T>> typeInfo)
+    private async Task<T> GetCachedAsync<T>(string key, int expirationMinutes, Func<CancellationToken, Task<T>> fetchFunc, JsonTypeInfo<CacheEntry<T>> typeInfo, CancellationToken ct)
     {
-        if (!_config.Enabled) return await fetchFunc();
+        if (!_config.Enabled) return await fetchFunc(ct);
 
         var hashedKey = GetCacheKey(key);
         var cacheFile = Path.Combine(_cacheDir, $"{hashedKey}.json");
@@ -39,7 +40,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
         {
             try
             {
-                var content = await _fs.ReadAllTextAsync(cacheFile);
+                var content = await _fs.ReadAllTextAsync(cacheFile, ct);
                 var entry = JsonSerializer.Deserialize(content, typeInfo);
                 if (entry != null && (_dateTime.UtcNow - entry.Timestamp).TotalMinutes < expirationMinutes)
                 {
@@ -49,12 +50,12 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             catch { /* Ignore cache errors and refetch */ }
         }
 
-        var data = await fetchFunc();
+        var data = await fetchFunc(ct);
         try
         {
             var entry = new CacheEntry<T> { Data = data, Timestamp = _dateTime.UtcNow };
             var content = JsonSerializer.Serialize(entry, typeInfo);
-            await _fs.WriteAllTextAsync(cacheFile, content);
+            await _fs.WriteAllTextAsync(cacheFile, content, ct);
         }
         catch { /* Ignore cache write errors */ }
 
@@ -84,83 +85,83 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
         }
     }
 
-    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) =>
+    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page, CancellationToken ct = default) =>
         await GetCachedAsync($"weekly_shorts_page_{page}", _config.DynamicExpirationMinutes,
-            async () => ToCampaignCollectionDto(await _inner.GetWeeklyShortCampaignsAsync(page)),
-            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+            async (c) => ToCampaignCollectionDto(await _inner.GetWeeklyShortCampaignsAsync(page, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto, ct);
 
-    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id) =>
+    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id, CancellationToken ct = default) =>
         await GetCachedAsync($"weekly_short_{id}", _config.StaticExpirationMinutes,
-            async () => ToCampaignDto(await _inner.GetWeeklyShortCampaignAsync(id)),
-            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+            async (c) => ToCampaignDto(await _inner.GetWeeklyShortCampaignAsync(id, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto, ct);
 
-    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page) =>
+    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page, CancellationToken ct = default) =>
         await GetCachedAsync($"weekly_grands_page_{page}", _config.DynamicExpirationMinutes,
-            async () => ToCampaignCollectionDto(await _inner.GetWeeklyGrandCampaignsAsync(page)),
-            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+            async (c) => ToCampaignCollectionDto(await _inner.GetWeeklyGrandCampaignsAsync(page, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto, ct);
 
-    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id) =>
+    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id, CancellationToken ct = default) =>
         await GetCachedAsync($"weekly_grand_{id}", _config.StaticExpirationMinutes,
-            async () => ToCampaignDto(await _inner.GetWeeklyGrandCampaignAsync(id)),
-            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+            async (c) => ToCampaignDto(await _inner.GetWeeklyGrandCampaignAsync(id, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto, ct);
 
-    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page) =>
+    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page, CancellationToken ct = default) =>
         await GetCachedAsync($"seasonal_page_{page}", _config.DynamicExpirationMinutes,
-            async () => ToCampaignCollectionDto(await _inner.GetSeasonalCampaignsAsync(page)),
-            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+            async (c) => ToCampaignCollectionDto(await _inner.GetSeasonalCampaignsAsync(page, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto, ct);
 
-    public async Task<ICampaign> GetSeasonalCampaignAsync(int id) =>
+    public async Task<ICampaign> GetSeasonalCampaignAsync(int id, CancellationToken ct = default) =>
         await GetCachedAsync($"seasonal_{id}", _config.StaticExpirationMinutes,
-            async () => ToCampaignDto(await _inner.GetSeasonalCampaignAsync(id)),
-            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+            async (c) => ToCampaignDto(await _inner.GetSeasonalCampaignAsync(id, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto, ct);
 
-    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page) =>
+    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page, CancellationToken ct = default) =>
         await GetCachedAsync($"club_campaigns_page_{page}", _config.DynamicExpirationMinutes,
-            async () => ToCampaignCollectionDto(await _inner.GetClubCampaignsAsync(page)),
-            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
+            async (c) => ToCampaignCollectionDto(await _inner.GetClubCampaignsAsync(page, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto, ct);
 
-    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId) =>
+    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId, CancellationToken ct = default) =>
         await GetCachedAsync($"club_{clubId}_campaign_{campaignId}", _config.StaticExpirationMinutes,
-            async () => ToCampaignDto(await _inner.GetClubCampaignAsync(clubId, campaignId)),
-            ToolboxCacheContext.Default.CacheEntryCampaignDto);
+            async (c) => ToCampaignDto(await _inner.GetClubCampaignAsync(clubId, campaignId, c)),
+            ToolboxCacheContext.Default.CacheEntryCampaignDto, ct);
 
-    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset) =>
+    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset, CancellationToken ct = default) =>
         await GetCachedAsync($"totd_offset_{monthOffset}", _config.DynamicExpirationMinutes,
-            async () => ToTrackOfTheDayCollectionDto(await _inner.GetTrackOfTheDaysAsync(monthOffset)),
-            ToolboxCacheContext.Default.CacheEntryTrackOfTheDayCollectionDto);
+            async (c) => ToTrackOfTheDayCollectionDto(await _inner.GetTrackOfTheDaysAsync(monthOffset, c)),
+            ToolboxCacheContext.Default.CacheEntryTrackOfTheDayCollectionDto, ct);
 
-    public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId) =>
+    public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId, CancellationToken ct = default) =>
         await GetCachedAsync($"leaderboard_{mapUid}_{accountId}", _config.HighlyDynamicExpirationMinutes,
-            async () => ToLeaderboardDto(await _inner.GetLeaderboardAsync(mapUid, accountId)),
-            ToolboxCacheContext.Default.CacheEntryLeaderboardDto);
+            async (c) => ToLeaderboardDto(await _inner.GetLeaderboardAsync(mapUid, accountId, c)),
+            ToolboxCacheContext.Default.CacheEntryLeaderboardDto, ct);
 
-    public async Task<ITmxMap?> GetTmxMapAsync(int id) =>
+    public async Task<ITmxMap?> GetTmxMapAsync(int id, CancellationToken ct = default) =>
         await GetCachedAsync($"tmx_map_{id}", _config.StaticExpirationMinutes,
-            async () => ToTmxMapDto(await _inner.GetTmxMapAsync(id)),
-            ToolboxCacheContext.Default.CacheEntryTmxMapDto);
+            async (c) => ToTmxMapDto(await _inner.GetTmxMapAsync(id, c)),
+            ToolboxCacheContext.Default.CacheEntryTmxMapDto, ct);
 
     public string GetTmxMapUrl(int id) => _inner.GetTmxMapUrl(id);
 
-    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
+    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc, CancellationToken ct = default)
     {
         var list = await GetCachedAsync($"tmx_search_{name}_{author}_{sort}_{desc}", _config.DynamicExpirationMinutes,
-            async () => (await _inner.SearchTmxMapsAsync(name, author, sort, desc)).Select(ToTmxMapDto).ToList()!,
-            ToolboxCacheContext.Default.CacheEntryListTmxMapDto);
+            async (c) => (await _inner.SearchTmxMapsAsync(name, author, sort, desc, c)).Select(ToTmxMapDto).ToList()!,
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto, ct);
         return list.Cast<ITmxMap>();
     }
 
-    public Task<ITmxMap?> GetRandomTmxMapAsync() => _inner.GetRandomTmxMapAsync();
+    public Task<ITmxMap?> GetRandomTmxMapAsync(CancellationToken ct = default) => _inner.GetRandomTmxMapAsync(ct);
 
-    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id) =>
+    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id, CancellationToken ct = default) =>
         await GetCachedAsync($"tmx_pack_{id}", _config.StaticExpirationMinutes,
-            async () => ToTmxMapPackDto(await _inner.GetTmxMapPackAsync(id)),
-            ToolboxCacheContext.Default.CacheEntryTmxMapPackDto);
+            async (c) => ToTmxMapPackDto(await _inner.GetTmxMapPackAsync(id, c)),
+            ToolboxCacheContext.Default.CacheEntryTmxMapPackDto, ct);
 
-    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id)
+    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id, CancellationToken ct = default)
     {
         var list = await GetCachedAsync($"tmx_pack_maps_{id}", _config.StaticExpirationMinutes,
-            async () => (await _inner.GetTmxMapPackMapsAsync(id)).Select(ToTmxMapDto).ToList(),
-            ToolboxCacheContext.Default.CacheEntryListTmxMapDto);
+            async (c) => (await _inner.GetTmxMapPackMapsAsync(id, c)).Select(ToTmxMapDto).ToList(),
+            ToolboxCacheContext.Default.CacheEntryListTmxMapDto, ct);
         return list.Cast<ITmxMap>();
     }
 

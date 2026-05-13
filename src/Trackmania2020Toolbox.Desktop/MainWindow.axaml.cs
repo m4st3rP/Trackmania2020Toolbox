@@ -4,11 +4,14 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Input;
 using Avalonia.Threading;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Trackmania2020Toolbox;
 using GBX.NET;
@@ -62,7 +65,9 @@ public partial class MainWindow : Window
     private readonly NumericUpDown _dynamicCacheExpiryInput;
     private readonly NumericUpDown _highlyDynamicCacheExpiryInput;
     private readonly ProgressBar _busyIndicator;
+    private readonly Button _cancelBtn;
     private bool _isBusy;
+    private CancellationTokenSource? _operationCts;
 
     private readonly ListBox _browserList;
     private readonly TextBox _browserPathDisplay;
@@ -71,6 +76,10 @@ public partial class MainWindow : Window
     private string _currentBrowserDirectory = string.Empty;
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _browserRefreshCts;
+
+    private readonly ConcurrentQueue<string> _logQueue = new();
+    private readonly DispatcherTimer _logTimer;
+    private readonly StringBuilder _logBatchBuilder = new();
 
     public MainWindow()
     {
@@ -112,6 +121,7 @@ public partial class MainWindow : Window
         _dynamicCacheExpiryInput = this.FindControl<NumericUpDown>("DynamicCacheExpiryInput")!;
         _highlyDynamicCacheExpiryInput = this.FindControl<NumericUpDown>("HighlyDynamicCacheExpiryInput")!;
         _busyIndicator = this.FindControl<ProgressBar>("BusyIndicator")!;
+        _cancelBtn = this.FindControl<Button>("CancelBtn")!;
 
         _browserList = this.FindControl<ListBox>("BrowserList")!;
         _browserPathDisplay = this.FindControl<TextBox>("BrowserPathDisplay")!;
@@ -140,34 +150,41 @@ public partial class MainWindow : Window
 
         _app = new ToolboxApp(api, _fs, net, fixer, console, dateTime, scriptDir, parser, downloader, _configService);
 
+        _logTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _logTimer.Tick += ProcessLogQueue;
+        _logTimer.Start();
+
         // Load initial settings
         UpdateUiFromConfig();
 
         // Wire up buttons
-        this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyShortsAsync(_weeklyShortsInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("WeeklyGrandsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleWeeklyGrandsAsync(_weeklyGrandsInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("SeasonalBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleSeasonalAsync(_seasonalInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("ToTDBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTrackOfTheDayAsync(_toTDInput.Text ?? "latest", GetConfig()));
-        this.FindControl<Button>("ClubBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleClubCampaignAsync(_clubInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxMapsAsync(_tmxInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxPacksAsync(_tmxPackInput.Text ?? "", GetConfig()));
-        this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleTmxRandomAsync(GetConfig()));
+        this.FindControl<Button>("WeeklyShortsBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleWeeklyShortsAsync(_weeklyShortsInput.Text ?? "latest", GetConfig(), c));
+        this.FindControl<Button>("WeeklyGrandsBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleWeeklyGrandsAsync(_weeklyGrandsInput.Text ?? "latest", GetConfig(), c));
+        this.FindControl<Button>("SeasonalBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleSeasonalAsync(_seasonalInput.Text ?? "latest", GetConfig(), c));
+        this.FindControl<Button>("ToTDBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleTrackOfTheDayAsync(_toTDInput.Text ?? "latest", GetConfig(), c));
+        this.FindControl<Button>("ClubBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleClubCampaignAsync(_clubInput.Text ?? "", GetConfig(), c));
+        this.FindControl<Button>("TmxDownloadBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleTmxMapsAsync(_tmxInput.Text ?? "", GetConfig(), c));
+        this.FindControl<Button>("TmxPackBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleTmxPacksAsync(_tmxPackInput.Text ?? "", GetConfig(), c));
+        this.FindControl<Button>("TmxRandomBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleTmxRandomAsync(GetConfig(), c));
         this.FindControl<Button>("TmxSearchBtn")!.Click += async (_, _) =>
         {
             string sort = (_tmxSortCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "name";
             bool desc = (_tmxOrderCombo.SelectedIndex == 1);
-            await RunTask(() => _app.HandleTmxSearchAsync(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig()));
+            await RunTask((c) => _app.HandleTmxSearchAsync(_tmxSearchNameInput.Text, _tmxSearchAuthorInput.Text, sort, desc, GetConfig(), c));
         };
 
         this.FindControl<Button>("RunFixerBtn")!.Click += async (_, _) =>
         {
-            await RunTask(async () =>
+            await RunTask(async (c) =>
             {
                 AppendLog("Running batch fixer..." + Environment.NewLine);
-                await _app.RunBatchFixerAsync(GetConfig());
+                await _app.RunBatchFixerAsync(GetConfig(), ct: c);
             });
         };
-        this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask(() => _app.HandleExportCampaignMedalsAsync(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig()));
+        this.FindControl<Button>("ExportMedalsBtn")!.Click += async (_, _) => await RunTask((c) => _app.HandleExportCampaignMedalsAsync(_playerIdInput.Text ?? "", _medalsCampaignInput.Text, GetConfig(), ct: c));
         this.FindControl<Button>("SaveSettingsBtn")!.Click += (_, _) => SaveConfig();
         this.FindControl<Button>("ResetSettingsBtn")!.Click += async (_, _) =>
         {
@@ -258,6 +275,13 @@ public partial class MainWindow : Window
             _selectionTcs?.SetResult(0);
             _selectionOverlay.IsVisible = false;
         };
+
+        _cancelBtn.Click += (_, _) =>
+        {
+            _operationCts?.Cancel();
+            _cancelBtn.IsEnabled = false;
+            AppendLog($"{Environment.NewLine}Cancellation requested...{Environment.NewLine}");
+        };
     }
 
     /// <summary>
@@ -281,11 +305,22 @@ public partial class MainWindow : Window
 
     private void AppendLog(string text)
     {
-        Dispatcher.UIThread.Post(() =>
+        _logQueue.Enqueue(text);
+    }
+
+    private void ProcessLogQueue(object? sender, EventArgs e)
+    {
+        if (_logQueue.IsEmpty) return;
+
+        _logBatchBuilder.Clear();
+        while (_logQueue.TryDequeue(out var text))
         {
-            _logOutput.Text += text;
-            _logOutput.CaretIndex = _logOutput.Text?.Length ?? 0;
-        });
+            _logBatchBuilder.Append(text);
+        }
+
+        string batchText = _logBatchBuilder.ToString();
+        _logOutput.Text += batchText;
+        _logOutput.CaretIndex = _logOutput.Text?.Length ?? 0;
     }
 
     private Config GetConfig()
@@ -320,13 +355,20 @@ public partial class MainWindow : Window
         return _config;
     }
 
-    private async Task RunTask(Func<Task> task)
+    private async Task RunTask(Func<CancellationToken, Task> task)
     {
         if (_isBusy) return;
         SetBusy(true);
+        _operationCts = new CancellationTokenSource();
+        _cancelBtn.IsVisible = true;
+        _cancelBtn.IsEnabled = true;
         try
         {
-            await task();
+            await task(_operationCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog($"{Environment.NewLine}Operation cancelled.{Environment.NewLine}");
         }
         catch (Exception ex)
         {
@@ -335,24 +377,34 @@ public partial class MainWindow : Window
         finally
         {
             SetBusy(false);
+            _cancelBtn.IsVisible = false;
+            _operationCts?.Dispose();
+            _operationCts = null;
         }
     }
 
-    private async Task RunTask(Func<Task<List<string>>> task)
+    private async Task RunTask(Func<CancellationToken, Task<List<string>>> task)
     {
         if (_isBusy) return;
         SetBusy(true);
+        _operationCts = new CancellationTokenSource();
+        _cancelBtn.IsVisible = true;
+        _cancelBtn.IsEnabled = true;
         try
         {
-            var paths = await task();
+            var paths = await task(_operationCts.Token);
             if (paths.Count > 0)
             {
                 RefreshBrowser();
                 if (_playAfterDownloadCheck.IsChecked ?? false)
                 {
-                    await _app.LaunchGameAsync(paths, GetConfig());
+                    await _app.LaunchGameAsync(paths, GetConfig(), _operationCts.Token);
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog($"{Environment.NewLine}Operation cancelled.{Environment.NewLine}");
         }
         catch (Exception ex)
         {
@@ -361,6 +413,9 @@ public partial class MainWindow : Window
         finally
         {
             SetBusy(false);
+            _cancelBtn.IsVisible = false;
+            _operationCts?.Dispose();
+            _operationCts = null;
         }
     }
 
@@ -555,7 +610,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                await RunTask(() => _app.LaunchGameAsync([item.FullPath], GetConfig()));
+                await RunTask((c) => _app.LaunchGameAsync([item.FullPath], GetConfig(), c));
             }
         }
     }
@@ -564,7 +619,7 @@ public partial class MainWindow : Window
     {
         if (_browserList.SelectedItem is BrowserItem item && !item.IsDirectory)
         {
-            await RunTask(() => _app.LaunchGameAsync([item.FullPath], GetConfig()));
+            await RunTask((c) => _app.LaunchGameAsync([item.FullPath], GetConfig(), c));
         }
     }
 
@@ -572,6 +627,9 @@ public partial class MainWindow : Window
     {
         _browserRefreshCts?.Cancel();
         _browserRefreshCts?.Dispose();
+        _operationCts?.Cancel();
+        _operationCts?.Dispose();
+        _logTimer.Stop();
         if (_configService is IDisposable disposable) disposable.Dispose();
         base.OnClosed(e);
     }

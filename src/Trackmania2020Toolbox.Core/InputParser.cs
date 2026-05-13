@@ -337,34 +337,30 @@ public partial class InputParser(IConsole console) : IInputParser
         var parts = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries);
         foreach (var partStr in parts)
         {
-            if (partStr.Contains(placeholder))
+            int pIdx = partStr.IndexOf(placeholder);
+            if (pIdx != -1)
             {
-                var rangeParts = partStr.Split(placeholder);
-                action(rangeParts[0].Trim(), rangeParts[1].Trim());
+                action(partStr[..pIdx].Trim(), partStr[(pIdx + placeholder.Length)..].Trim());
                 continue;
             }
 
-            var part = partStr.AsSpan().Trim();
-            if (part.IsEmpty) continue;
-
             int dashIdx = -1;
-            for (int i = 0; i < part.Length; i++)
+            for (int i = 0; i < partStr.Length; i++)
             {
-                if (part[i] == '-')
+                if (partStr[i] == '-' && !IsDateSeparator(partStr.AsSpan(), i))
                 {
-                    if (IsDateSeparator(part, i)) continue;
                     dashIdx = i;
                     break;
                 }
             }
 
-            if (dashIdx != -1 && dashIdx < part.Length - 1)
+            if (dashIdx != -1)
             {
-                action(part[..dashIdx].ToString(), part[(dashIdx + 1)..].ToString());
+                action(partStr[..dashIdx].Trim(), partStr[(dashIdx + 1)..].Trim());
             }
             else
             {
-                action(part.ToString(), null);
+                action(partStr.Trim(), null);
             }
         }
     }

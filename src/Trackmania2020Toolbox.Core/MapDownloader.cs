@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Threading;
 using TmEssentials;
 
 namespace Trackmania2020Toolbox;
@@ -10,7 +11,7 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
     private readonly IMapFixer _fixer = fixer;
     private readonly IConsole _console = console;
 
-    public async Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config)
+    public async Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config, CancellationToken ct = default)
     {
         if (!_fs.DirectoryExists(downloadDir)) _fs.CreateDirectory(downloadDir);
 
@@ -20,9 +21,11 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
 
         for (int i = 0; i < mapList.Count; i++)
         {
+            ct.ThrowIfCancellationRequested();
+
             if (i > 0 && config.Downloader.DownloadDelayMs > 0)
             {
-                await Task.Delay(config.Downloader.DownloadDelayMs);
+                await Task.Delay(config.Downloader.DownloadDelayMs, ct);
             }
 
             var map = mapList[i];
@@ -66,11 +69,11 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
 
             try
             {
-                var fileData = await _net.GetByteArrayAsync(map.FileUrl);
-                await _fs.WriteAllBytesAsync(filePath, fileData);
+                var fileData = await _net.GetByteArrayAsync(map.FileUrl, ct);
+                await _fs.WriteAllBytesAsync(filePath, fileData, ct);
                 _console.Write("Downloaded and ");
 
-                if (await _fixer.ProcessFileAsync(filePath, config))
+                if (await _fixer.ProcessFileAsync(filePath, config, ct))
                 {
                     var fileNameOnly = Path.GetFileName(filePath);
                     var deformattedFileName = TextFormatter.Deformat(fileNameOnly);
@@ -80,6 +83,11 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
                 else _console.WriteLine("Saved.");
 
                 processedPaths.Add(filePath);
+            }
+            catch (OperationCanceledException)
+            {
+                _console.WriteLine("\n  Cancelled.");
+                throw;
             }
             catch (Exception ex)
             {
