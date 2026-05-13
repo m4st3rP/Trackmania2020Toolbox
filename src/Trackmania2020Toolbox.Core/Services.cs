@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.Http;
+using System.Threading;
 using Tomlyn;
 using GBX.NET;
 using GBX.NET.Engines.Game;
@@ -13,15 +14,15 @@ public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConf
     private readonly IConsole? _console = console;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
-    public async Task<Config> LoadConfigAsync(string scriptDirectory)
+    public async Task<Config> LoadConfigAsync(string scriptDirectory, CancellationToken ct = default)
     {
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(ct);
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
             if (!_fs.FileExists(configPath)) return Config.Default;
 
-            var content = await _fs.ReadAllTextAsync(configPath);
+            var content = await _fs.ReadAllTextAsync(configPath, ct);
             return LoadConfigInternal(configPath, content);
         }
         finally
@@ -67,14 +68,14 @@ public class RealConfigService(IFileSystem fs, IConsole? console = null) : IConf
         return Config.Default;
     }
 
-    public async Task SaveConfigAsync(string scriptDirectory, Config config)
+    public async Task SaveConfigAsync(string scriptDirectory, Config config, CancellationToken ct = default)
     {
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(ct);
         try
         {
             var configPath = Path.Combine(scriptDirectory, "config.toml");
             var content = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
-            await _fs.WriteAllTextAsync(configPath, content);
+            await _fs.WriteAllTextAsync(configPath, content, ct);
         }
         finally
         {
@@ -103,36 +104,30 @@ public class RealBrowserService(IFileSystem fs) : IBrowserService
     {
         if (!_fs.DirectoryExists(directory)) return [];
 
-        var dirs = _fs.GetDirectories(directory)
+        var filteredDirs = _fs.GetDirectories(directory)
             .Select(Path.GetFileName)
             .Where(name => string.IsNullOrEmpty(filter) || name!.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
-        var sortedDirs = descending ? dirs.OrderByDescending(d => d) : dirs.OrderBy(d => d);
+        var sortedDirs = descending ? filteredDirs.OrderByDescending(d => d) : filteredDirs.OrderBy(d => d);
 
-        var items = sortedDirs
+        var dirItems = sortedDirs
             .Select(name => new BrowserItem(name!, Path.Combine(directory, name!), true));
 
-        var files = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
+        var filteredFiles = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
             .Select(f =>
             {
                 var fn = Path.GetFileName(f);
                 return (Path: f, FileName: fn, DisplayName: TextFormatter.Deformat(fn));
-            });
-
-        if (!string.IsNullOrEmpty(filter))
-        {
-            files = files.Where(f =>
-                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-        }
+            })
+            .Where(f => string.IsNullOrEmpty(filter) || f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) || f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
         var sortedFiles = descending
-            ? files.OrderByDescending(f => f.DisplayName)
-            .Select(f => new BrowserItem(f.DisplayName, f.Path, false))
-            : files.OrderBy(f => f.DisplayName)
-            .Select(f => new BrowserItem(f.DisplayName, f.Path, false));
+            ? filteredFiles.OrderByDescending(f => f.DisplayName)
+            : filteredFiles.OrderBy(f => f.DisplayName);
 
-        return items.Concat(sortedFiles).ToList();
+        var fileItems = sortedFiles.Select(f => new BrowserItem(f.DisplayName, f.Path, false));
+
+        return dirItems.Concat(fileItems).ToList();
     }
 }
 
@@ -142,14 +137,14 @@ public class RealFileSystem : IFileSystem
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
     public bool FileExists(string path) => File.Exists(path);
     public void DeleteFile(string path) => File.Delete(path);
-    public Task WriteAllBytesAsync(string path, byte[] bytes) => File.WriteAllBytesAsync(path, bytes);
+    public Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct = default) => File.WriteAllBytesAsync(path, bytes, ct);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
-    public Task WriteAllTextAsync(string path, string contents) => File.WriteAllTextAsync(path, contents);
+    public Task WriteAllTextAsync(string path, string contents, CancellationToken ct = default) => File.WriteAllTextAsync(path, contents, ct);
     public string ReadAllText(string path) => File.ReadAllText(path);
-    public Task<string> ReadAllTextAsync(string path) => File.ReadAllTextAsync(path);
+    public Task<string> ReadAllTextAsync(string path, CancellationToken ct = default) => File.ReadAllTextAsync(path, ct);
     public string[] ReadAllLines(string path) => File.ReadAllLines(path);
     public void WriteAllLines(string path, IEnumerable<string> contents) => File.WriteAllLines(path, contents);
-    public Task WriteAllLinesAsync(string path, IEnumerable<string> contents) => File.WriteAllLinesAsync(path, contents);
+    public Task WriteAllLinesAsync(string path, IEnumerable<string> contents, CancellationToken ct = default) => File.WriteAllLinesAsync(path, contents, ct);
     public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) => Directory.GetFiles(path, searchPattern, searchOption);
     public string[] GetDirectories(string path) => Directory.GetDirectories(path);
 }
@@ -157,7 +152,7 @@ public class RealFileSystem : IFileSystem
 public class RealNetworkService(HttpClient httpClient) : INetworkService
 {
     private readonly HttpClient _httpClient = httpClient;
-    public Task<byte[]> GetByteArrayAsync(string url) => _httpClient.GetByteArrayAsync(url);
+    public Task<byte[]> GetByteArrayAsync(string url, CancellationToken ct = default) => _httpClient.GetByteArrayAsync(url, ct);
 }
 
 public class RealMapFixer : IMapFixer
@@ -167,12 +162,12 @@ public class RealMapFixer : IMapFixer
     public const string LegacyMapType = "TrackMania\\TM_Platform";
     public const string TargetMapType = "TrackMania\\TM_Race";
 
-    public async Task<bool> ProcessFileAsync(string filePath, Config cfg)
+    public async Task<bool> ProcessFileAsync(string filePath, Config cfg, CancellationToken ct = default)
     {
         var fixerCfg = cfg.Fixer;
         if (!fixerCfg.UpdateTitle && !fixerCfg.ConvertPlatformMapType) return false;
 
-        var gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath);
+        var gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath, cancellationToken: ct);
         if (gbx?.Node == null) return false;
 
         var map = gbx.Node;

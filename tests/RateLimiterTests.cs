@@ -14,8 +14,8 @@ public class RateLimiterTests
         var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
-        await limiter.ApplyDelayAsync(); // First call, no delay
-        await limiter.ApplyDelayAsync(); // Second call, should delay ~100ms
+        await limiter.ApplyDelayAsync(CancellationToken.None); // First call, no delay
+        await limiter.ApplyDelayAsync(CancellationToken.None); // Second call, should delay ~100ms
 
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds >= 90, $"Elapsed: {sw.ElapsedMilliseconds}ms");
@@ -28,9 +28,9 @@ public class RateLimiterTests
         var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
-        var task1 = limiter.ApplyDelayAsync();
-        var task2 = limiter.ApplyDelayAsync();
-        var task3 = limiter.ApplyDelayAsync();
+        var task1 = limiter.ApplyDelayAsync(CancellationToken.None);
+        var task2 = limiter.ApplyDelayAsync(CancellationToken.None);
+        var task3 = limiter.ApplyDelayAsync(CancellationToken.None);
 
         await Task.WhenAll(task1, task2, task3);
 

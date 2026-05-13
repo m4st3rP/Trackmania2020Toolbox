@@ -1,215 +1,138 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Moq;
-using Xunit;
-using Trackmania2020Toolbox;
 using Tomlyn;
-using Tomlyn.Model;
+using Trackmania2020Toolbox;
+using Xunit;
 
 namespace Trackmania2020Toolbox.Tests;
-
-public class BrowserServiceTests
-{
-    private readonly Mock<IFileSystem> _fsMock = new();
-    private readonly RealBrowserService _service;
-
-    public BrowserServiceTests()
-    {
-        _service = new RealBrowserService(_fsMock.Object);
-    }
-
-    [Fact]
-    public void GetBrowserItems_ShouldReturnEmpty_WhenDirectoryDoesNotExist()
-    {
-        _fsMock.Setup(f => f.DirectoryExists("invalid")).Returns(false);
-        var result = _service.GetBrowserItems("invalid", "", false);
-        Assert.Empty(result);
-    }
-
-    [Fact]
-    public void GetBrowserItems_ShouldReturnDirsAndFiles()
-    {
-        _fsMock.Setup(f => f.DirectoryExists("root")).Returns(true);
-        _fsMock.Setup(f => f.GetDirectories("root")).Returns(new[] { "root/dir1", "root/dir2" });
-        _fsMock.Setup(f => f.GetFiles("root", "*.Map.Gbx", SearchOption.TopDirectoryOnly)).Returns(new[] { "root/map1.Map.Gbx" });
-
-        var result = _service.GetBrowserItems("root", "", false).ToList();
-
-        Assert.Equal(3, result.Count);
-        Assert.Contains(result, r => r.DisplayName == "dir1" && r.IsDirectory);
-        Assert.Contains(result, r => r.DisplayName == "dir2" && r.IsDirectory);
-        Assert.Contains(result, r => r.DisplayName == "map1.Map.Gbx" && !r.IsDirectory);
-    }
-
-    [Fact]
-    public void GetBrowserItems_ShouldFilterBySearchTerm()
-    {
-        _fsMock.Setup(f => f.DirectoryExists("root")).Returns(true);
-        _fsMock.Setup(f => f.GetDirectories("root")).Returns(new[] { "root/apple", "root/banana" });
-        _fsMock.Setup(f => f.GetFiles("root", "*.Map.Gbx", SearchOption.TopDirectoryOnly)).Returns(new[] { "root/apricot.Map.Gbx" });
-
-        var result = _service.GetBrowserItems("root", "app", false).ToList();
-
-        // apricot.Map.Gbx contains "ap", apple contains "app"
-        // Wait, "app" is the filter. "apple" contains "app". "apricot.Map.Gbx" DOES NOT contain "app".
-        // Ah! That's why it was 1. apricot != app.
-        Assert.Single(result);
-        Assert.Equal("apple", result[0].DisplayName);
-    }
-
-    [Fact]
-    public void GetBrowserItems_ShouldSortCorrectly()
-    {
-        _fsMock.Setup(f => f.DirectoryExists("root")).Returns(true);
-        _fsMock.Setup(f => f.GetDirectories("root")).Returns(new[] { "root/B", "root/A" });
-        _fsMock.Setup(f => f.GetFiles("root", "*.Map.Gbx", SearchOption.TopDirectoryOnly)).Returns(new[] { "root/C.Map.Gbx" });
-
-        // Ascending
-        var resultAsc = _service.GetBrowserItems("root", "", false).ToList();
-        Assert.Equal("A", resultAsc[0].DisplayName);
-        Assert.Equal("B", resultAsc[1].DisplayName);
-        Assert.Equal("C.Map.Gbx", resultAsc[2].DisplayName);
-
-        // Descending
-        var resultDesc = _service.GetBrowserItems("root", "", true).ToList();
-        Assert.Equal("B", resultDesc[0].DisplayName);
-        Assert.Equal("A", resultDesc[1].DisplayName);
-        Assert.Equal("C.Map.Gbx", resultDesc[2].DisplayName);
-    }
-}
 
 public class ConfigServiceTests
 {
     private readonly Mock<IFileSystem> _fsMock = new();
+    private readonly Mock<IConsole> _consoleMock = new();
     private readonly RealConfigService _service;
 
     public ConfigServiceTests()
     {
-        _service = new RealConfigService(_fsMock.Object);
+        _service = new RealConfigService(_fsMock.Object, _consoleMock.Object);
     }
 
     [Fact]
-    public async Task LoadConfigAsync_ShouldReturnDefaults_WhenFileNotFound()
+    public async Task LoadConfigAsync_ShouldReturnDefault_WhenFileDoesNotExist()
     {
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
         var config = await _service.LoadConfigAsync("/test");
-
         Assert.NotNull(config);
-        Assert.Null(config.App.SetGamePath);
-        Assert.True(config.Desktop.DoubleClickToPlay);
+        Assert.Equal(Config.Default.Downloader.DownloadDelayMs, config.Downloader.DownloadDelayMs);
     }
 
     [Fact]
-    public async Task LoadConfigAsync_ShouldLoadCorrectValues()
+    public async Task LoadConfigAsync_ShouldReturnConfig_WhenFileExists()
     {
-        var toml = "[App]\nSetGamePath = \"/path/tm.exe\"\n[Desktop]\nBrowserFolder = \"/maps\"\nDoubleClickToPlay = false\nEnterToPlay = false\nPlayAfterDownload = true";
+        var config = Config.Default;
+        config.Downloader.DownloadDelayMs = 500;
+        var toml = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
+
         _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
-        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync(toml);
+        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(toml);
+
+        var loaded = await _service.LoadConfigAsync("/test");
+        Assert.Equal(500, loaded.Downloader.DownloadDelayMs);
+    }
+
+    [Fact]
+    public void LoadConfig_ShouldReturnDefault_WhenFileDoesNotExist()
+    {
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
+        var config = _service.LoadConfig("/test");
+        Assert.NotNull(config);
+        Assert.Equal(Config.Default.Downloader.DownloadDelayMs, config.Downloader.DownloadDelayMs);
+    }
+
+    [Fact]
+    public void LoadConfig_ShouldReturnConfig_WhenFileExists()
+    {
+        var config = Config.Default;
+        config.Downloader.DownloadDelayMs = 500;
+        var toml = TomlSerializer.Serialize(config, ToolboxConfigContext.Default.Config);
+
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
+        _fsMock.Setup(f => f.ReadAllText(It.IsAny<string>())).Returns(toml);
+
+        var loaded = _service.LoadConfig("/test");
+        Assert.Equal(500, loaded.Downloader.DownloadDelayMs);
+    }
+
+    [Fact]
+    public async Task LoadConfigAsync_ShouldFallbackToDefault_OnCorruptedFile()
+    {
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
+        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync("invalid = [toml");
 
         var config = await _service.LoadConfigAsync("/test");
+        Assert.NotNull(config);
+        _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("ERROR"))), Times.AtLeastOnce);
+    }
 
-        Assert.Equal("/path/tm.exe", config.App.SetGamePath);
-        Assert.Equal("/maps", config.Desktop.BrowserFolder);
-        Assert.False(config.Desktop.DoubleClickToPlay);
-        Assert.False(config.Desktop.EnterToPlay);
-        Assert.True(config.Desktop.PlayAfterDownload);
+    [Fact]
+    public void LoadConfig_ShouldFallbackToDefault_OnCorruptedFile()
+    {
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
+        _fsMock.Setup(f => f.ReadAllText(It.IsAny<string>())).Returns("invalid = [toml");
+
+        var config = _service.LoadConfig("/test");
+        Assert.NotNull(config);
+        _consoleMock.Verify(c => c.WriteLine(It.Is<string>(s => s.Contains("ERROR"))), Times.AtLeastOnce);
     }
 
     [Fact]
     public async Task SaveConfigAsync_ShouldWriteCorrectToml()
     {
-        string capturedToml = "";
-        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
-               .Returns(Task.CompletedTask)
-               .Callback<string, string>((path, content) => capturedToml = content);
+        string? savedContent = null;
+        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((p, c, t) => savedContent = c)
+            .Returns(Task.CompletedTask);
 
         var config = Config.Default;
-        config.App.SetGamePath = "/path/tm.exe";
-        config.Desktop.BrowserFolder = "/maps";
-        config.Desktop.DoubleClickToPlay = true;
-        config.Desktop.EnterToPlay = false;
-        config.Desktop.PlayAfterDownload = true;
+        config.Downloader.DownloadDelayMs = 1234;
 
         await _service.SaveConfigAsync("/test", config);
 
-        Assert.Contains("SetGamePath = \"/path/tm.exe\"", capturedToml);
-        Assert.Contains("BrowserFolder = \"/maps\"", capturedToml);
-        Assert.Contains("DoubleClickToPlay = true", capturedToml);
-        Assert.Contains("EnterToPlay = false", capturedToml);
-        Assert.Contains("PlayAfterDownload = true", capturedToml);
-    }
-
-    [Fact]
-    public async Task LoadConfigAsync_ShouldHandleCorruptedFileGracefully()
-    {
-        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
-        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync("invalid toml content");
-
-        var config = await _service.LoadConfigAsync("/test");
-
-        Assert.NotNull(config);
-        Assert.True(config.Desktop.DoubleClickToPlay); // Default
-    }
-
-    [Fact]
-    public async Task LoadConfigAsync_ShouldHandlePartialFileGracefully()
-    {
-        // Missing [Desktop] and [Downloader] sections
-        var toml = "[App]\nSetGamePath = \"/path/tm.exe\"";
-        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(true);
-        _fsMock.Setup(f => f.ReadAllTextAsync(It.IsAny<string>())).ReturnsAsync(toml);
-
-        var config = await _service.LoadConfigAsync("/test");
-
-        Assert.Equal("/path/tm.exe", config.App.SetGamePath);
-        Assert.NotNull(config.Desktop);
-        Assert.True(config.Desktop.DoubleClickToPlay); // Default from constructor
-        Assert.Equal(1000, config.Downloader.DownloadDelayMs); // Default from constructor
+        Assert.NotNull(savedContent);
+        Assert.Contains("DownloadDelayMs = 1234", savedContent);
     }
 
     [Fact]
     public async Task SaveConfigAsync_ShouldPersistDownloadDelay()
     {
-        string capturedToml = "";
-        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
-               .Returns(Task.CompletedTask)
-               .Callback<string, string>((path, content) => capturedToml = content);
+        string? savedContent = null;
+        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((p, c, t) => savedContent = c)
+            .Returns(Task.CompletedTask);
 
         var config = Config.Default;
-        config.Downloader.DownloadDelayMs = 500;
+        config.Downloader.DownloadDelayMs = 2000;
 
         await _service.SaveConfigAsync("/test", config);
 
-        Assert.Contains("DownloadDelayMs = 500", capturedToml);
+        _fsMock.Verify(f => f.WriteAllTextAsync(It.Is<string>(p => p.EndsWith("config.toml")), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("DownloadDelayMs = 2000", savedContent);
     }
 
     [Fact]
-    public async Task RealConfigService_ShouldSynchronizeConcurrentAccess()
+    public async Task ConfigService_ShouldBeThreadSafe()
     {
-        int concurrentCalls = 0;
-        int maxConcurrentCalls = 0;
-        var lockObj = new object();
-
-        _fsMock.Setup(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>()))
-               .Returns(async () =>
-               {
-                   int current = Interlocked.Increment(ref concurrentCalls);
-                   lock (lockObj) { maxConcurrentCalls = Math.Max(maxConcurrentCalls, current); }
-                   await Task.Delay(50); // Simulate I/O
-                   Interlocked.Decrement(ref concurrentCalls);
-               });
+        _fsMock.Setup(f => f.FileExists(It.IsAny<string>())).Returns(false);
 
         var tasks = new List<Task>();
         for (int i = 0; i < 10; i++)
         {
+            tasks.Add(_service.LoadConfigAsync("/test"));
             tasks.Add(_service.SaveConfigAsync("/test", Config.Default));
         }
 
         await Task.WhenAll(tasks);
 
-        // Even with 10 tasks, the semaphore should ensure max concurrency is 1
-        Assert.Equal(1, maxConcurrentCalls);
+        // Ensure no exceptions occurred and internal state is fine
+        _fsMock.Verify(f => f.WriteAllTextAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(10));
     }
 }

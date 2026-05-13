@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
+using System.Threading;
 using ManiaAPI.TrackmaniaIO;
 using ManiaAPI.TMX;
 using TmEssentials;
@@ -15,11 +16,11 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
 
     public int DelayMs { get; set; }
 
-    internal async Task ApplyDelayAsync()
+    internal async Task ApplyDelayAsync(CancellationToken ct)
     {
         if (DelayMs <= 0) return;
 
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(ct);
         try
         {
             long now = Stopwatch.GetTimestamp();
@@ -29,7 +30,7 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
             if (elapsedTicks < minIntervalTicks)
             {
                 int delay = (int)((minIntervalTicks - elapsedTicks) / TimeSpan.TicksPerMillisecond);
-                if (delay > 0) await Task.Delay(delay);
+                if (delay > 0) await Task.Delay(delay, ct);
             }
 
             _lastRequestTimestamp = Stopwatch.GetTimestamp();
@@ -40,80 +41,80 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
         }
     }
 
-    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page)
+    public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page));
+        await ApplyDelayAsync(ct);
+        return new CampaignCollectionProxy(await _api.GetWeeklyShortCampaignsAsync(page, ct));
     }
 
-    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id)
+    public async Task<ICampaign> GetWeeklyShortCampaignAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id));
+        await ApplyDelayAsync(ct);
+        return new CampaignProxy(await _api.GetWeeklyShortCampaignAsync(id, ct));
     }
 
-    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page)
+    public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignCollectionProxy(await _api.GetWeeklyGrandCampaignsAsync(page));
+        await ApplyDelayAsync(ct);
+        return new CampaignCollectionProxy(await _api.GetWeeklyGrandCampaignsAsync(page, ct));
     }
 
-    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id)
+    public async Task<ICampaign> GetWeeklyGrandCampaignAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignProxy(await _api.GetWeeklyGrandCampaignAsync(id));
+        await ApplyDelayAsync(ct);
+        return new CampaignProxy(await _api.GetWeeklyGrandCampaignAsync(id, ct));
     }
 
-    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page)
+    public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignCollectionProxy(await _api.GetSeasonalCampaignsAsync(page));
+        await ApplyDelayAsync(ct);
+        return new CampaignCollectionProxy(await _api.GetSeasonalCampaignsAsync(page, ct));
     }
 
-    public async Task<ICampaign> GetSeasonalCampaignAsync(int id)
+    public async Task<ICampaign> GetSeasonalCampaignAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignProxy(await _api.GetSeasonalCampaignAsync(id));
+        await ApplyDelayAsync(ct);
+        return new CampaignProxy(await _api.GetSeasonalCampaignAsync(id, ct));
     }
 
-    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page)
+    public async Task<ICampaignCollection> GetClubCampaignsAsync(int page, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignCollectionProxy(await _api.GetClubCampaignsAsync(page));
+        await ApplyDelayAsync(ct);
+        return new CampaignCollectionProxy(await _api.GetClubCampaignsAsync(page, ct));
     }
 
-    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId)
+    public async Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        return new CampaignProxy(await _api.GetClubCampaignAsync(clubId, campaignId));
+        await ApplyDelayAsync(ct);
+        return new CampaignProxy(await _api.GetClubCampaignAsync(clubId, campaignId, ct));
     }
 
-    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset)
+    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _api.GetTrackOfTheDaysAsync(monthOffset);
+        await ApplyDelayAsync(ct);
+        var result = await _api.GetTrackOfTheDaysAsync(monthOffset, ct);
         return new TrackOfTheDayCollectionProxy(result);
     }
 
-    public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId)
+    public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _api.GetLeaderboardAsync(mapUid, accountId);
+        await ApplyDelayAsync(ct);
+        var result = await _api.GetLeaderboardAsync(mapUid, accountId, ct);
         return new LeaderboardProxy(result);
     }
 
-    public async Task<ITmxMap?> GetTmxMapAsync(int id)
+    public async Task<ITmxMap?> GetTmxMapAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Id = [id] });
+        await ApplyDelayAsync(ct);
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Id = [id] }, ct);
         return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
     }
 
     public string GetTmxMapUrl(int id) => _tmx.GetMapGbxUrl(id);
 
-    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc)
+    public async Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
+        await ApplyDelayAsync(ct);
         int? order = sort.ToLowerInvariant() switch
         {
             "name" => desc ? 2 : 1,
@@ -123,28 +124,28 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
             _ => desc ? 2 : 1
         };
 
-        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Name = name, Author = author, Order1 = order });
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Name = name, Author = author, Order1 = order }, ct);
         return result.Results.Select(r => new TmxMapProxy(r));
     }
 
-    public async Task<ITmxMap?> GetRandomTmxMapAsync()
+    public async Task<ITmxMap?> GetRandomTmxMapAsync(CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Random = 1, Count = 1 });
+        await ApplyDelayAsync(ct);
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { Random = 1, Count = 1 }, ct);
         return result.Results.Count > 0 ? new TmxMapProxy(result.Results[0]) : null;
     }
 
-    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id)
+    public async Task<ITmxMapPack?> GetTmxMapPackAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _tmx.SearchMappacksAsync(new MX.SearchMappacksParameters { Id = [id] });
+        await ApplyDelayAsync(ct);
+        var result = await _tmx.SearchMappacksAsync(new MX.SearchMappacksParameters { Id = [id] }, ct);
         return result.Results.Count > 0 ? new TmxMapPackProxy(result.Results[0]) : null;
     }
 
-    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id)
+    public async Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id, CancellationToken ct = default)
     {
-        await ApplyDelayAsync();
-        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { MappackId = id });
+        await ApplyDelayAsync(ct);
+        var result = await _tmx.SearchMapsAsync(new MX.SearchMapsParameters { MappackId = id }, ct);
         return result.Results.Select(r => new TmxMapProxy(r));
     }
 

@@ -242,7 +242,10 @@
 
         <!-- Log Area -->
         <Grid Grid.Row="1" RowDefinitions="Auto, *">
-            <TextBlock Grid.Row="0" Text="Log Output" Background="#333" Foreground="White" Padding="5,2"/>
+            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Background="#333">
+                <TextBlock Text="Log Output" Foreground="White" Padding="5,2" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="Cancel Operation" Name="CancelBtn" IsVisible="False" Margin="2" Padding="10,2" Background="DarkRed" Foreground="White"/>
+            </Grid>
             <TextBox Grid.Row="1" Name="LogOutput" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas,Monospace" Background="Black" Foreground="LightGray"/>
         </Grid>
 

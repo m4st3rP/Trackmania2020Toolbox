@@ -196,7 +196,7 @@ public class ToolboxTests
 
         await _app.RunBatchFixerAsync(config, config.App.ExtraPaths);
 
-        _fixerMock.Verify(f => f.ProcessFileAsync("test-map.Map.Gbx", config), Times.Once);
+        _fixerMock.Verify(f => f.ProcessFileAsync("test-map.Map.Gbx", config, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

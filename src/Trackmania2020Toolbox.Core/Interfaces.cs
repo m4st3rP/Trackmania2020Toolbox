@@ -1,3 +1,4 @@
+using System.Threading;
 using TmEssentials;
 
 namespace Trackmania2020Toolbox;
@@ -17,23 +18,23 @@ public interface ITmxMapPack { int Id { get; } string Name { get; } }
 public interface ITrackmaniaApi : IDisposable
 {
     int DelayMs { get; set; }
-    Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page);
-    Task<ICampaign> GetWeeklyShortCampaignAsync(int id);
-    Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page);
-    Task<ICampaign> GetWeeklyGrandCampaignAsync(int id);
-    Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page);
-    Task<ICampaign> GetSeasonalCampaignAsync(int id);
-    Task<ICampaignCollection> GetClubCampaignsAsync(int page);
-    Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId);
-    Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset);
-    Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId);
+    Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page, CancellationToken ct = default);
+    Task<ICampaign> GetWeeklyShortCampaignAsync(int id, CancellationToken ct = default);
+    Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page, CancellationToken ct = default);
+    Task<ICampaign> GetWeeklyGrandCampaignAsync(int id, CancellationToken ct = default);
+    Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page, CancellationToken ct = default);
+    Task<ICampaign> GetSeasonalCampaignAsync(int id, CancellationToken ct = default);
+    Task<ICampaignCollection> GetClubCampaignsAsync(int page, CancellationToken ct = default);
+    Task<ICampaign> GetClubCampaignAsync(int clubId, int campaignId, CancellationToken ct = default);
+    Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset, CancellationToken ct = default);
+    Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId, CancellationToken ct = default);
 
-    Task<ITmxMap?> GetTmxMapAsync(int id);
+    Task<ITmxMap?> GetTmxMapAsync(int id, CancellationToken ct = default);
     string GetTmxMapUrl(int id);
-    Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc);
-    Task<ITmxMap?> GetRandomTmxMapAsync();
-    Task<ITmxMapPack?> GetTmxMapPackAsync(int id);
-    Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id);
+    Task<IEnumerable<ITmxMap>> SearchTmxMapsAsync(string? name, string? author, string sort, bool desc, CancellationToken ct = default);
+    Task<ITmxMap?> GetRandomTmxMapAsync(CancellationToken ct = default);
+    Task<ITmxMapPack?> GetTmxMapPackAsync(int id, CancellationToken ct = default);
+    Task<IEnumerable<ITmxMap>> GetTmxMapPackMapsAsync(int id, CancellationToken ct = default);
 }
 
 public interface IFileSystem
@@ -42,26 +43,26 @@ public interface IFileSystem
     void CreateDirectory(string path);
     bool FileExists(string path);
     void DeleteFile(string path);
-    Task WriteAllBytesAsync(string path, byte[] bytes);
+    Task WriteAllBytesAsync(string path, byte[] bytes, CancellationToken ct = default);
     void WriteAllText(string path, string contents);
-    Task WriteAllTextAsync(string path, string contents);
+    Task WriteAllTextAsync(string path, string contents, CancellationToken ct = default);
     string ReadAllText(string path);
-    Task<string> ReadAllTextAsync(string path);
+    Task<string> ReadAllTextAsync(string path, CancellationToken ct = default);
     string[] ReadAllLines(string path);
     void WriteAllLines(string path, IEnumerable<string> contents);
-    Task WriteAllLinesAsync(string path, IEnumerable<string> contents);
+    Task WriteAllLinesAsync(string path, IEnumerable<string> contents, CancellationToken ct = default);
     string[] GetFiles(string path, string searchPattern, SearchOption searchOption);
     string[] GetDirectories(string path);
 }
 
 public interface INetworkService
 {
-    Task<byte[]> GetByteArrayAsync(string url);
+    Task<byte[]> GetByteArrayAsync(string url, CancellationToken ct = default);
 }
 
 public interface IMapFixer
 {
-    Task<bool> ProcessFileAsync(string filePath, Config config);
+    Task<bool> ProcessFileAsync(string filePath, Config config, CancellationToken ct = default);
 }
 
 public interface IDateTime { DateTime UtcNow { get; } }
@@ -96,12 +97,12 @@ public interface IInputParser
 
 public interface IMapDownloader
 {
-    Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config);
+    Task<List<string>> DownloadAndFixMapsAsync(IEnumerable<MapDownloadRecord> maps, string downloadDir, Config config, CancellationToken ct = default);
 }
 
 public interface IConfigService
 {
-    Task<Config> LoadConfigAsync(string scriptDirectory);
-    Task SaveConfigAsync(string scriptDirectory, Config config);
+    Task<Config> LoadConfigAsync(string scriptDirectory, CancellationToken ct = default);
+    Task SaveConfigAsync(string scriptDirectory, Config config, CancellationToken ct = default);
     Config LoadConfig(string scriptDirectory);
 }

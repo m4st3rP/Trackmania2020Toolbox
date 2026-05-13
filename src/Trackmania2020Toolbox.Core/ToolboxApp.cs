@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Threading;
 using TmEssentials;
 
 namespace Trackmania2020Toolbox;
@@ -27,7 +28,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
     public ITrackmaniaApi Api => _api;
 
-    public async Task RunAsync(Config config)
+    public async Task RunAsync(Config config, CancellationToken ct = default)
     {
         var appCfg = config.App;
         var dlCfg = config.Downloader;
@@ -36,7 +37,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         if (appCfg.SetGamePath != null)
         {
-            await SaveGamePathAsync(appCfg.SetGamePath);
+            await SaveGamePathAsync(appCfg.SetGamePath, ct);
             if (!appCfg.Play && dlCfg.WeeklyShorts == null && dlCfg.WeeklyGrands == null &&
                 dlCfg.Seasonal == null && dlCfg.ClubCampaign == null && dlCfg.ToTDDate == null &&
                 dlCfg.ExportMedalsPlayerId == null && !fixerCfg.ExplicitFolder && appCfg.ExtraPaths.Count == 0)
@@ -46,53 +47,53 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         HashSet<string> mapPaths = [];
         bool downloadActionTaken = false;
 
-        var downloadHandlers = new List<(bool Condition, Func<Task<List<string>>> Action)>
+        var downloadHandlers = new List<(bool Condition, Func<CancellationToken, Task<List<string>>> Action)>
         {
-            (dlCfg.WeeklyShorts != null, () => HandleWeeklyShortsAsync(dlCfg.WeeklyShorts!, config)),
-            (dlCfg.WeeklyGrands != null, () => HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands!, config)),
-            (dlCfg.Seasonal != null, () => HandleSeasonalAsync(dlCfg.Seasonal!, config)),
-            (dlCfg.ClubCampaign != null, () => HandleClubCampaignAsync(dlCfg.ClubCampaign!, config)),
-            (dlCfg.ToTDDate != null, () => HandleTrackOfTheDayAsync(dlCfg.ToTDDate!, config)),
-            (tmxCfg.TmxMaps != null, () => HandleTmxMapsAsync(tmxCfg.TmxMaps!, config)),
-            (tmxCfg.TmxPacks != null, () => HandleTmxPacksAsync(tmxCfg.TmxPacks!, config)),
-            (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null, () => HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config)),
-            (tmxCfg.TmxRandom, () => HandleTmxRandomAsync(config))
+            (dlCfg.WeeklyShorts != null, (c) => HandleWeeklyShortsAsync(dlCfg.WeeklyShorts!, config, c)),
+            (dlCfg.WeeklyGrands != null, (c) => HandleWeeklyGrandsAsync(dlCfg.WeeklyGrands!, config, c)),
+            (dlCfg.Seasonal != null, (c) => HandleSeasonalAsync(dlCfg.Seasonal!, config, c)),
+            (dlCfg.ClubCampaign != null, (c) => HandleClubCampaignAsync(dlCfg.ClubCampaign!, config, c)),
+            (dlCfg.ToTDDate != null, (c) => HandleTrackOfTheDayAsync(dlCfg.ToTDDate!, config, c)),
+            (tmxCfg.TmxMaps != null, (c) => HandleTmxMapsAsync(tmxCfg.TmxMaps!, config, c)),
+            (tmxCfg.TmxPacks != null, (c) => HandleTmxPacksAsync(tmxCfg.TmxPacks!, config, c)),
+            (tmxCfg.TmxSearch != null || tmxCfg.TmxAuthor != null, (c) => HandleTmxSearchAsync(tmxCfg.TmxSearch, tmxCfg.TmxAuthor, tmxCfg.TmxSort, tmxCfg.TmxDesc, config, c)),
+            (tmxCfg.TmxRandom, (c) => HandleTmxRandomAsync(config, c))
         };
 
         foreach (var (condition, action) in downloadHandlers)
         {
             if (condition)
             {
-                foreach (var path in await action()) mapPaths.Add(path);
+                foreach (var path in await action(ct)) mapPaths.Add(path);
                 downloadActionTaken = true;
             }
         }
 
         if (dlCfg.ExportMedalsPlayerId != null)
         {
-            await HandleExportCampaignMedalsAsync(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign, config, dlCfg.ExportMedalsOutputPath);
+            await HandleExportCampaignMedalsAsync(dlCfg.ExportMedalsPlayerId, dlCfg.ExportMedalsCampaign, config, dlCfg.ExportMedalsOutputPath, ct);
             downloadActionTaken = true;
         }
 
         if (fixerCfg.ExplicitFolder || appCfg.ExtraPaths.Count > 0 || (!downloadActionTaken && appCfg.SetGamePath == null))
         {
-            var fixedPaths = await RunBatchFixerAsync(config, appCfg.ExtraPaths);
+            var fixedPaths = await RunBatchFixerAsync(config, appCfg.ExtraPaths, ct);
             foreach (var path in fixedPaths) mapPaths.Add(path);
         }
 
         if (appCfg.Play)
         {
-            await LaunchGameAsync([.. mapPaths], config);
+            await LaunchGameAsync([.. mapPaths], config, ct);
         }
     }
 
-    private async Task SaveGamePathAsync(string path)
+    private async Task SaveGamePathAsync(string path, CancellationToken ct)
     {
         try
         {
-            var config = await _configService.LoadConfigAsync(_scriptDirectory);
+            var config = await _configService.LoadConfigAsync(_scriptDirectory, ct);
             config.App.SetGamePath = path;
-            await _configService.SaveConfigAsync(_scriptDirectory, config);
+            await _configService.SaveConfigAsync(_scriptDirectory, config, ct);
             _console.WriteLine($"Game path saved to: {Path.Combine(_scriptDirectory, "config.toml")}");
         }
         catch (Exception ex)
@@ -101,7 +102,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
     }
 
-    public async Task LaunchGameAsync(List<string> mapPaths, Config? config = null)
+    public async Task LaunchGameAsync(List<string> mapPaths, Config? config = null, CancellationToken ct = default)
     {
         if (mapPaths.Count == 0)
         {
@@ -109,7 +110,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             return;
         }
 
-        config ??= await _configService.LoadConfigAsync(_scriptDirectory);
+        config ??= await _configService.LoadConfigAsync(_scriptDirectory, ct);
         var gamePath = config.App.SetGamePath;
         if (string.IsNullOrEmpty(gamePath))
         {
@@ -158,21 +159,21 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
     }
 
-    public Task<List<string>> HandleWeeklyShortsAsync(string input, Config config) =>
+    public Task<List<string>> HandleWeeklyShortsAsync(string input, Config config, CancellationToken ct = default) =>
         HandleWeeklyCampaignAsync(input, config, "Weekly Shorts",
-            p => _api.GetWeeklyShortCampaignsAsync(p),
-            id => _api.GetWeeklyShortCampaignAsync(id),
+            p => _api.GetWeeklyShortCampaignsAsync(p, ct),
+            id => _api.GetWeeklyShortCampaignAsync(id, ct),
             c => _parser.ParseWeeklyShortsNum(c.Name),
             weekId => Path.Combine(_defaultMapsFolder, "Weekly Shorts", weekId),
-            (m, i, weekId) => $"{(i + 1):D2} - ");
+            (m, i, weekId) => $"{(i + 1):D2} - ", ct);
 
-    public Task<List<string>> HandleWeeklyGrandsAsync(string input, Config config) =>
+    public Task<List<string>> HandleWeeklyGrandsAsync(string input, Config config, CancellationToken ct = default) =>
         HandleWeeklyCampaignAsync(input, config, "Weekly Grands",
-            p => _api.GetWeeklyGrandCampaignsAsync(p),
-            id => _api.GetWeeklyGrandCampaignAsync(id),
+            p => _api.GetWeeklyGrandCampaignsAsync(p, ct),
+            id => _api.GetWeeklyGrandCampaignAsync(id, ct),
             c => _parser.ParseWeeklyGrandsNum(c.Name),
             weekId => Path.Combine(_defaultMapsFolder, "Weekly Grands"),
-            (m, i, weekId) => $"{weekId} - ");
+            (m, i, weekId) => $"{weekId} - ", ct);
 
     private async Task<List<string>> HandleWeeklyCampaignAsync(
         string input, Config config, string displayName,
@@ -180,11 +181,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         Func<int, Task<ICampaign>> fetchOneFunc,
         Func<ICampaignItem, int> idParserFunc,
         Func<string, string> downloadDirFunc,
-        Func<IMap, int, string, string> prefixFunc)
+        Func<IMap, int, string, string> prefixFunc,
+        CancellationToken ct)
     {
         List<string> downloadedPaths = [];
         _console.WriteLine($"Fetching available {displayName} campaigns...");
-        var allCampaigns = await FetchAllCampaignsAsync(fetchAllFunc);
+        var allCampaigns = await FetchAllCampaignsAsync(fetchAllFunc, ct: ct);
 
         var campaignWithNums = allCampaigns
             .Select(c => new { Campaign = c, Num = idParserFunc(c) })
@@ -258,7 +260,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var downloadDir = downloadDirFunc(weekIdStr);
             downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(
                 mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, prefixFunc(m.map, m.index, weekIdStr))),
-                downloadDir, config));
+                downloadDir, config, ct));
         }
         return downloadedPaths;
     }
@@ -271,11 +273,11 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         return true;
     }
 
-    public async Task<List<string>> HandleSeasonalAsync(string input, Config config)
+    public async Task<List<string>> HandleSeasonalAsync(string input, Config config, CancellationToken ct = default)
     {
         List<string> downloadedPaths = [];
         _console.WriteLine("Fetching available Seasonal campaigns...");
-        var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetSeasonalCampaignsAsync(p));
+        var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetSeasonalCampaignsAsync(p, ct), ct: ct);
 
         var campaignRefs = allCampaigns
             .Select(c => new { Campaign = c, Ref = _parser.ParseSeasonalRefFromCampaignName(c.Name) })
@@ -330,12 +332,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             }
 
             _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
-            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
+            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id, ct);
             if (fullCampaign?.Playlist == null) return downloadedPaths;
 
             var seasonalFolderName = PathUtilities.SanitizeFolderName(_parser.FormatSeasonalFolderName(campaignItem.Name));
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
-            return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
+            return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config, ct);
         }
 
         foreach (var campaignRef in campaignRefs)
@@ -347,7 +349,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var campaignItem = campaignRef.Campaign;
             _console.WriteLine($"Found: {TextFormatter.Deformat(campaignItem.Name)}");
 
-            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
+            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id, ct);
             if (fullCampaign?.Playlist == null) continue;
 
             var playlist = fullCampaign.Playlist.ToList();
@@ -368,7 +370,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var downloadDir = Path.Combine(_defaultMapsFolder, "Seasonal", seasonalFolderName);
             downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(
                 mapsToDownload.Select(m => new MapDownloadRecord(m.map.Name, m.map.FileName, m.map.FileUrl, $"{(m.index + 1):D2} - ")),
-                downloadDir, config));
+                downloadDir, config, ct));
         }
 
         return downloadedPaths;
@@ -400,7 +402,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
     }
 
 
-    public async Task<List<string>> HandleClubCampaignAsync(string input, Config config)
+    public async Task<List<string>> HandleClubCampaignAsync(string input, Config config, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -412,12 +414,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         var parts = input.Split('/');
         if (parts.Length == 2 && int.TryParse(parts[0], out clubId) && int.TryParse(parts[1], out campaignId))
         {
-            return await DownloadClubCampaignAsync(clubId, campaignId, config);
+            return await DownloadClubCampaignAsync(clubId, campaignId, config, ct);
         }
         else if (int.TryParse(input, out clubId))
         {
             _console.WriteLine($"Fetching all campaigns for Club ID {clubId}...");
-            var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetClubCampaignsAsync(p));
+            var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetClubCampaignsAsync(p, ct), ct: ct);
             var clubCampaigns = allCampaigns.Where(c => c.ClubId == clubId).ToList();
             if (!clubCampaigns.Any())
             {
@@ -429,14 +431,14 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             foreach (var campaign in clubCampaigns)
             {
                 _console.WriteLine($"Found: {TextFormatter.Deformat(campaign.Name)} (ID: {campaign.Id})");
-                downloadedPaths.AddRange(await DownloadClubCampaignAsync(clubId, campaign.Id, config));
+                downloadedPaths.AddRange(await DownloadClubCampaignAsync(clubId, campaign.Id, config, ct));
             }
             return downloadedPaths;
         }
         else
         {
             _console.WriteLine($"Searching for club campaigns matching '{input}'...");
-            var campaigns = await FetchAllCampaignsAsync(p => _api.GetClubCampaignsAsync(p), maxPages: 20);
+            var campaigns = await FetchAllCampaignsAsync(p => _api.GetClubCampaignsAsync(p, ct), maxPages: 20, ct: ct);
             var matches = campaigns.Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (matches.Count == 0)
@@ -447,7 +449,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             {
                 var match = matches[0];
                 _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} (ID: {match.ClubId}/{match.Id})");
-                return await DownloadClubCampaignAsync(match.ClubId ?? 0, match.Id, config);
+                return await DownloadClubCampaignAsync(match.ClubId ?? 0, match.Id, config, ct);
             }
             else
             {
@@ -455,26 +457,26 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                 if (choice > 0)
                 {
                     var match = matches[choice - 1];
-                    return await DownloadClubCampaignAsync(match.ClubId ?? 0, match.Id, config);
+                    return await DownloadClubCampaignAsync(match.ClubId ?? 0, match.Id, config, ct);
                 }
             }
         }
         return [];
     }
 
-    private async Task<List<string>> DownloadClubCampaignAsync(int clubId, int campaignId, Config config)
+    private async Task<List<string>> DownloadClubCampaignAsync(int clubId, int campaignId, Config config, CancellationToken ct)
     {
-        var fullCampaign = await _api.GetClubCampaignAsync(clubId, campaignId);
+        var fullCampaign = await _api.GetClubCampaignAsync(clubId, campaignId, ct);
         if (fullCampaign?.Playlist == null) return [];
 
         var clubPart = PathUtilities.SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.ClubName) ? fullCampaign.ClubName : clubId.ToString());
         var campaignPart = PathUtilities.SanitizeFolderName(!string.IsNullOrEmpty(fullCampaign.Name) ? fullCampaign.Name : campaignId.ToString());
 
         var downloadDir = Path.Combine(_defaultMapsFolder, "Clubs", clubPart, campaignPart);
-        return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config);
+        return await _downloader.DownloadAndFixMapsAsync(fullCampaign.Playlist.Select((m, i) => new MapDownloadRecord(m.Name, m.FileName, m.FileUrl, $"{(i + 1):D2} - ")), downloadDir, config, ct);
     }
 
-    public async Task<List<string>> HandleTmxMapsAsync(string input, Config config)
+    public async Task<List<string>> HandleTmxMapsAsync(string input, Config config, CancellationToken ct = default)
     {
         var ids = _parser.ParseTmxIds(input);
         if (!ids.Any()) return [];
@@ -482,22 +484,22 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         List<ITmxMap> maps = [];
         foreach (var id in ids)
         {
-            var map = await _api.GetTmxMapAsync(id);
+            var map = await _api.GetTmxMapAsync(id, ct);
             if (map != null) maps.Add(map);
             else _console.WriteLine($"Error: Could not find TMX map {id}.");
         }
 
-        return await HandleTmxMapsAsync(maps, config);
+        return await HandleTmxMapsAsync(maps, config, ct);
     }
 
-    public async Task<List<string>> HandleTmxMapsAsync(IEnumerable<ITmxMap> maps, Config config)
+    public async Task<List<string>> HandleTmxMapsAsync(IEnumerable<ITmxMap> maps, Config config, CancellationToken ct = default)
     {
         var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange");
         var mapsToDownload = maps.Select(map => new MapDownloadRecord(map.Name, null, _api.GetTmxMapUrl(map.Id), null));
-        return await _downloader.DownloadAndFixMapsAsync(mapsToDownload, downloadDir, config);
+        return await _downloader.DownloadAndFixMapsAsync(mapsToDownload, downloadDir, config, ct);
     }
 
-    public async Task<List<string>> HandleTmxPacksAsync(string input, Config config)
+    public async Task<List<string>> HandleTmxPacksAsync(string input, Config config, CancellationToken ct = default)
     {
         List<string> downloadedPaths = [];
         var ids = _parser.ParseTmxIds(input);
@@ -505,7 +507,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         foreach (var id in ids)
         {
-            var pack = await _api.GetTmxMapPackAsync(id);
+            var pack = await _api.GetTmxMapPackAsync(id, ct);
             if (pack == null)
             {
                 _console.WriteLine($"Error: Could not find TMX map pack {id}.");
@@ -514,19 +516,19 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
             var deformattedPackName = TextFormatter.Deformat(pack.Name);
             _console.WriteLine($"Found Map Pack: {deformattedPackName}");
-            var maps = await _api.GetTmxMapPackMapsAsync(pack.Id);
+            var maps = await _api.GetTmxMapPackMapsAsync(pack.Id, ct);
             var downloadDir = Path.Combine(_defaultMapsFolder, "Exchange", PathUtilities.SanitizeFolderName(deformattedPackName));
 
-            downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(maps.Select((m, i) => new MapDownloadRecord(m.Name, null, _api.GetTmxMapUrl(m.Id), $"{(i + 1):D2} - ")), downloadDir, config));
+            downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(maps.Select((m, i) => new MapDownloadRecord(m.Name, null, _api.GetTmxMapUrl(m.Id), $"{(i + 1):D2} - ")), downloadDir, config, ct));
         }
 
         return downloadedPaths;
     }
 
-    public async Task<List<string>> HandleTmxSearchAsync(string? name, string? author, string sort, bool desc, Config config)
+    public async Task<List<string>> HandleTmxSearchAsync(string? name, string? author, string sort, bool desc, Config config, CancellationToken ct = default)
     {
         _console.WriteLine($"Searching TMX (Name: {name ?? "Any"}, Author: {author ?? "Any"}, Sort: {sort}, Desc: {desc})...");
-        var results = (await _api.SearchTmxMapsAsync(name, author, sort, desc)).ToList();
+        var results = (await _api.SearchTmxMapsAsync(name, author, sort, desc, ct)).ToList();
 
         if (results.Count == 0)
         {
@@ -538,23 +540,23 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         {
             var match = results[0];
             _console.WriteLine($"Found: {TextFormatter.Deformat(match.Name)} by {match.AuthorName} (ID: {match.Id})");
-            return await HandleTmxMapsAsync([match], config);
+            return await HandleTmxMapsAsync([match], config, ct);
         }
 
         var displayResults = results.Take(20).ToList();
         var choice = await _console.SelectItemAsync("Search results", displayResults.Select(r => $"{TextFormatter.Deformat(r.Name)} by {r.AuthorName} (ID: {r.Id}, Awards: {r.AwardCount}, DLs: {r.DownloadCount})"));
         if (choice > 0)
         {
-            return await HandleTmxMapsAsync([displayResults[choice - 1]], config);
+            return await HandleTmxMapsAsync([displayResults[choice - 1]], config, ct);
         }
 
         return [];
     }
 
-    public async Task<List<string>> HandleTmxRandomAsync(Config config)
+    public async Task<List<string>> HandleTmxRandomAsync(Config config, CancellationToken ct = default)
     {
         _console.WriteLine("Fetching random map from TMX...");
-        var map = await _api.GetRandomTmxMapAsync();
+        var map = await _api.GetRandomTmxMapAsync(ct);
         if (map == null)
         {
             _console.WriteLine("Error: Failed to fetch random map.");
@@ -562,11 +564,11 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
 
         _console.WriteLine($"Random Map: {TextFormatter.Deformat(map.Name)} by {map.AuthorName} (ID: {map.Id})");
-        return await HandleTmxMapsAsync([map], config);
+        return await HandleTmxMapsAsync([map], config, ct);
     }
 
 
-    public async Task<List<string>> HandleTrackOfTheDayAsync(string dateInput, Config config)
+    public async Task<List<string>> HandleTrackOfTheDayAsync(string dateInput, Config config, CancellationToken ct = default)
     {
         var now = _dateTime.UtcNow;
         List<(DateTime Start, DateTime End)> ranges = [];
@@ -592,7 +594,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         int monthDrift = 0;
         try
         {
-            var currentMonthFromApi = await _api.GetTrackOfTheDaysAsync(0);
+            var currentMonthFromApi = await _api.GetTrackOfTheDaysAsync(0, ct);
             if (currentMonthFromApi != null)
             {
                 monthDrift = (now.Year - currentMonthFromApi.Year) * 12 + (now.Month - currentMonthFromApi.Month);
@@ -604,12 +606,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         }
 
         List<string> downloadedPaths = [];
-        List<DateTime> allDaysToDownload = [];
+        HashSet<DateTime> allDaysToDownload = [];
         foreach (var range in ranges)
         {
             for (var d = range.Start; d <= range.End; d = d.AddDays(1))
             {
-                if (!allDaysToDownload.Contains(d)) allDaysToDownload.Add(d);
+                allDaysToDownload.Add(d);
             }
         }
 
@@ -618,7 +620,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         foreach (var monthGroup in daysByMonth)
         {
             int monthOffset = (now.Year - monthGroup.Key.Year) * 12 + (now.Month - monthGroup.Key.Month) - monthDrift;
-            var response = await _api.GetTrackOfTheDaysAsync(monthOffset);
+            var response = await _api.GetTrackOfTheDaysAsync(monthOffset, ct);
             if (response?.Days == null) continue;
 
             var targetDays = monthGroup.Select(d => d.Day).ToList();
@@ -627,13 +629,13 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             if (!totdDays.Any()) continue;
 
             var downloadDir = Path.Combine(_defaultMapsFolder, "Track of the Day", response.Year.ToString(), response.Month.ToString("D2"));
-            downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(totdDays.Select(d => new MapDownloadRecord(d.Map!.Name, d.Map.FileName, d.Map.FileUrl, $"{d.MonthDay:D2} - ")), downloadDir, config));
+            downloadedPaths.AddRange(await _downloader.DownloadAndFixMapsAsync(totdDays.Select(d => new MapDownloadRecord(d.Map!.Name, d.Map.FileName, d.Map.FileUrl, $"{d.MonthDay:D2} - ")), downloadDir, config, ct));
         }
 
         return downloadedPaths;
     }
 
-    private async Task<List<ICampaignItem>> FetchAllCampaignsAsync(Func<int, Task<ICampaignCollection>> fetchFunc, int maxPages = int.MaxValue)
+    private async Task<List<ICampaignItem>> FetchAllCampaignsAsync(Func<int, Task<ICampaignCollection>> fetchFunc, int maxPages = int.MaxValue, CancellationToken ct = default)
     {
         List<ICampaignItem> all = [];
         int page = 0, pageCount = 1;
@@ -643,11 +645,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             if (response?.Campaigns != null) all.AddRange(response.Campaigns);
             pageCount = response?.PageCount ?? 0;
             page++;
+            if (ct.IsCancellationRequested) break;
         }
         return all;
     }
 
-    public async Task HandleExportCampaignMedalsAsync(string playerId, string? campaignNameFilter, Config config, string? outputPath = null)
+    public async Task HandleExportCampaignMedalsAsync(string playerId, string? campaignNameFilter, Config config, string? outputPath = null, CancellationToken ct = default)
     {
         if (!Guid.TryParse(playerId, out var accountId))
         {
@@ -659,7 +662,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         _console.WriteLine($"Exporting medals for Player ID: {accountIdStr}");
 
         _console.WriteLine("Fetching available Seasonal campaigns...");
-        var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetSeasonalCampaignsAsync(p));
+        var allCampaigns = await FetchAllCampaignsAsync(p => _api.GetSeasonalCampaignsAsync(p, ct), ct: ct);
 
         var campaignsToProcess = allCampaigns;
         if (!string.IsNullOrEmpty(campaignNameFilter))
@@ -678,11 +681,12 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
         for (int i = 0; i < campaignsToProcess.Count; i++)
         {
+            ct.ThrowIfCancellationRequested();
             var campaignItem = campaignsToProcess[i];
             var deformattedCampaignName = TextFormatter.Deformat(campaignItem.Name);
             _console.WriteLine($"[{i + 1}/{campaignsToProcess.Count}] Campaign: {deformattedCampaignName}");
 
-            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id);
+            var fullCampaign = await _api.GetSeasonalCampaignAsync(campaignItem.Id, ct);
             if (fullCampaign?.Playlist == null)
             {
                 _console.WriteLine("  Failed to fetch campaign details.");
@@ -691,6 +695,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
             foreach (var map in fullCampaign.Playlist)
             {
+                ct.ThrowIfCancellationRequested();
                 var deformattedMapName = TextFormatter.Deformat(map.Name);
                 _console.Write($"  - {deformattedMapName}... ");
 
@@ -699,7 +704,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
 
                 try
                 {
-                    var leaderboard = await _api.GetLeaderboardAsync(map.MapUid, accountIdStr);
+                    var leaderboard = await _api.GetLeaderboardAsync(map.MapUid, accountIdStr, ct);
                     if (leaderboard.Tops != null && leaderboard.Tops.Any())
                     {
                         var record = leaderboard.Tops.First();
@@ -729,6 +734,7 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
                         _console.WriteLine($"Network error: {ex.StatusCode}");
                     }
                 }
+                catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
                     _console.WriteLine($"Error: {ex.Message}");
@@ -744,16 +750,17 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
             var dir = Path.GetDirectoryName(finalPath);
             if (!string.IsNullOrEmpty(dir) && !_fs.DirectoryExists(dir)) _fs.CreateDirectory(dir);
 
-            await _fs.WriteAllLinesAsync(finalPath, csvLines);
+            await _fs.WriteAllLinesAsync(finalPath, csvLines, ct);
             _console.WriteLine($"\nExport complete! Saved to {Path.GetFullPath(finalPath)}");
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             _console.WriteLine($"\nError saving CSV: {ex.Message}");
         }
     }
 
-    public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null)
+    public async Task<List<string>> RunBatchFixerAsync(Config config, List<string>? extraFiles = null, CancellationToken ct = default)
     {
         ConcurrentBag<string> processedPaths = [];
         HashSet<string> filesToProcess = [];
@@ -788,16 +795,17 @@ public class ToolboxApp(ITrackmaniaApi api, IFileSystem fs, INetworkService net,
         _console.WriteLine($"\nAnalyzing {filesToProcess.Count} maps...");
         int changed = 0;
 
-        await Parallel.ForEachAsync(filesToProcess, async (file, ct) =>
+        await Parallel.ForEachAsync(filesToProcess, ct, async (file, token) =>
         {
             try
             {
-                if (await _fixer.ProcessFileAsync(file, config))
+                if (await _fixer.ProcessFileAsync(file, config, token))
                 {
                     Interlocked.Increment(ref changed);
                 }
                 processedPaths.Add(file);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 _console.WriteLine($"Failed to process {file}: {ex.Message}");
