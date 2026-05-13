@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using Trackmania2020Toolbox;
 using Xunit;
+using Moq;
 
 namespace Trackmania2020Toolbox.Tests;
 
@@ -11,7 +12,8 @@ public class RateLimiterTests
     public async Task RateLimiter_ShouldRespectDelayBetweenCalls()
     {
         using var httpClient = new HttpClient();
-        var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
+        var console = new Mock<IConsole>().Object;
+        var limiter = new TrackmaniaApiWrapper(httpClient, "Test", console) { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
         await limiter.ApplyDelayAsync(); // First call, no delay
@@ -25,7 +27,8 @@ public class RateLimiterTests
     public async Task RateLimiter_ShouldSerializeConcurrentCalls()
     {
         using var httpClient = new HttpClient();
-        var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
+        var console = new Mock<IConsole>().Object;
+        var limiter = new TrackmaniaApiWrapper(httpClient, "Test", console) { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
         var task1 = limiter.ApplyDelayAsync();

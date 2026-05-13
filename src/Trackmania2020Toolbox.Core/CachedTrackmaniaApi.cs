@@ -85,7 +85,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
     }
 
     public async Task<ICampaignCollection> GetWeeklyShortCampaignsAsync(int page) =>
-        await GetCachedAsync($"weekly_shorts_page_{page}", _config.DynamicExpirationMinutes,
+        await GetCachedAsync($"weekly_shorts_page_{page}", page == 0 ? _config.HighlyDynamicExpirationMinutes : _config.DynamicExpirationMinutes,
             async () => ToCampaignCollectionDto(await _inner.GetWeeklyShortCampaignsAsync(page)),
             ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
 
@@ -95,7 +95,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             ToolboxCacheContext.Default.CacheEntryCampaignDto);
 
     public async Task<ICampaignCollection> GetWeeklyGrandCampaignsAsync(int page) =>
-        await GetCachedAsync($"weekly_grands_page_{page}", _config.DynamicExpirationMinutes,
+        await GetCachedAsync($"weekly_grands_page_{page}", page == 0 ? _config.HighlyDynamicExpirationMinutes : _config.DynamicExpirationMinutes,
             async () => ToCampaignCollectionDto(await _inner.GetWeeklyGrandCampaignsAsync(page)),
             ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
 
@@ -105,7 +105,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             ToolboxCacheContext.Default.CacheEntryCampaignDto);
 
     public async Task<ICampaignCollection> GetSeasonalCampaignsAsync(int page) =>
-        await GetCachedAsync($"seasonal_page_{page}", _config.DynamicExpirationMinutes,
+        await GetCachedAsync($"seasonal_page_{page}", page == 0 ? _config.HighlyDynamicExpirationMinutes : _config.DynamicExpirationMinutes,
             async () => ToCampaignCollectionDto(await _inner.GetSeasonalCampaignsAsync(page)),
             ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
 
@@ -115,7 +115,7 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             ToolboxCacheContext.Default.CacheEntryCampaignDto);
 
     public async Task<ICampaignCollection> GetClubCampaignsAsync(int page) =>
-        await GetCachedAsync($"club_campaigns_page_{page}", _config.DynamicExpirationMinutes,
+        await GetCachedAsync($"club_campaigns_page_{page}", page == 0 ? _config.HighlyDynamicExpirationMinutes : _config.DynamicExpirationMinutes,
             async () => ToCampaignCollectionDto(await _inner.GetClubCampaignsAsync(page)),
             ToolboxCacheContext.Default.CacheEntryCampaignCollectionDto);
 
@@ -124,10 +124,14 @@ public class CachedTrackmaniaApi : ITrackmaniaApi
             async () => ToCampaignDto(await _inner.GetClubCampaignAsync(clubId, campaignId)),
             ToolboxCacheContext.Default.CacheEntryCampaignDto);
 
-    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset) =>
-        await GetCachedAsync($"totd_offset_{monthOffset}", _config.DynamicExpirationMinutes,
+    public async Task<ITrackOfTheDayCollection> GetTrackOfTheDaysAsync(int monthOffset)
+    {
+        var now = _dateTime.UtcNow;
+        var targetMonth = now.AddMonths(-monthOffset);
+        return await GetCachedAsync($"totd_{targetMonth.Year}_{targetMonth.Month:D2}", _config.DynamicExpirationMinutes,
             async () => ToTrackOfTheDayCollectionDto(await _inner.GetTrackOfTheDaysAsync(monthOffset)),
             ToolboxCacheContext.Default.CacheEntryTrackOfTheDayCollectionDto);
+    }
 
     public async Task<ILeaderboard> GetLeaderboardAsync(string mapUid, string accountId) =>
         await GetCachedAsync($"leaderboard_{mapUid}_{accountId}", _config.HighlyDynamicExpirationMinutes,

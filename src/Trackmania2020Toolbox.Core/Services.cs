@@ -160,8 +160,10 @@ public class RealNetworkService(HttpClient httpClient) : INetworkService
     public Task<byte[]> GetByteArrayAsync(string url) => _httpClient.GetByteArrayAsync(url);
 }
 
-public class RealMapFixer : IMapFixer
+public class RealMapFixer(IConsole? console = null) : IMapFixer
 {
+    private readonly IConsole? _console = console;
+
     public const string LegacyTitleId = "OrbitalDev@falguiere";
     public const string TargetTitleId = "TMStadium";
     public const string LegacyMapType = "TrackMania\\TM_Platform";
@@ -172,10 +174,21 @@ public class RealMapFixer : IMapFixer
         var fixerCfg = cfg.Fixer;
         if (!fixerCfg.UpdateTitle && !fixerCfg.ConvertPlatformMapType) return false;
 
-        var gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath);
-        if (gbx?.Node == null) return false;
+        CGameCtnChallenge? map;
+        Gbx<CGameCtnChallenge> gbx;
 
-        var map = gbx.Node;
+        try
+        {
+            gbx = await Gbx.ParseAsync<CGameCtnChallenge>(filePath);
+            if (gbx?.Node == null) return false;
+            map = gbx.Node;
+        }
+        catch (Exception ex)
+        {
+            Log($"[MapFixer] ERROR: Failed to parse map '{filePath}': {ex.Message}");
+            return false;
+        }
+
         bool changed = false;
 
         if (fixerCfg.UpdateTitle && map.TitleId == LegacyTitleId)
@@ -199,6 +212,12 @@ public class RealMapFixer : IMapFixer
         }
 
         return changed;
+    }
+
+    private void Log(string message)
+    {
+        if (_console != null) _console.WriteLine(message);
+        else Console.WriteLine(message);
     }
 }
 
