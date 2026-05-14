@@ -1,6 +1,7 @@
 using Xunit;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Moq;
 
 namespace Trackmania2020Toolbox.Tests;
 
@@ -12,7 +13,8 @@ public class TrackmaniaApiTests
         // Arrange
         var httpClient = new HttpClient();
         var userAgent = "TestUserAgent";
-        var wrapper = new TrackmaniaApiWrapper(httpClient, userAgent);
+        var consoleMock = new Mock<IConsole>();
+        var wrapper = new TrackmaniaApiWrapper(httpClient, userAgent, consoleMock.Object);
 
         // Act
         wrapper.Dispose();

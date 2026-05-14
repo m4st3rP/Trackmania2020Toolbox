@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
+using Moq;
 using Trackmania2020Toolbox;
 using Xunit;
 
@@ -11,7 +12,8 @@ public class RateLimiterTests
     public async Task RateLimiter_ShouldRespectDelayBetweenCalls()
     {
         using var httpClient = new HttpClient();
-        var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
+        var consoleMock = new Mock<IConsole>();
+        var limiter = new TrackmaniaApiWrapper(httpClient, "Test", consoleMock.Object) { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
         await limiter.ApplyDelayAsync(); // First call, no delay
@@ -25,7 +27,8 @@ public class RateLimiterTests
     public async Task RateLimiter_ShouldSerializeConcurrentCalls()
     {
         using var httpClient = new HttpClient();
-        var limiter = new TrackmaniaApiWrapper(httpClient, "Test") { DelayMs = 100 };
+        var consoleMock = new Mock<IConsole>();
+        var limiter = new TrackmaniaApiWrapper(httpClient, "Test", consoleMock.Object) { DelayMs = 100 };
         var sw = Stopwatch.StartNew();
 
         var task1 = limiter.ApplyDelayAsync();
@@ -41,5 +44,18 @@ public class RateLimiterTests
         // Call 3: 200ms
         // Total elapsed should be at least ~200ms
         Assert.True(sw.ElapsedMilliseconds >= 190, $"Elapsed: {sw.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public async Task RateLimiter_ShouldLogWhenDelayExceeds500ms()
+    {
+        using var httpClient = new HttpClient();
+        var consoleMock = new Mock<IConsole>();
+        var limiter = new TrackmaniaApiWrapper(httpClient, "Test", consoleMock.Object) { DelayMs = 600 };
+
+        await limiter.ApplyDelayAsync(); // First call
+        await limiter.ApplyDelayAsync(); // Second call, should log
+
+        consoleMock.Verify(c => c.WriteLine("Waiting for rate limit..."), Times.Once);
     }
 }

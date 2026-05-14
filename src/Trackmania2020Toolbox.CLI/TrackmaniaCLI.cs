@@ -72,7 +72,7 @@ public static class TrackmaniaCLI
         var baseConfig = await configService.LoadConfigAsync(scriptDir);
         var config = ParseArguments(args, baseConfig);
 
-        using var rawApi = new TrackmaniaApiWrapper(HttpClient, UserAgent);
+        using var rawApi = new TrackmaniaApiWrapper(HttpClient, UserAgent, console);
         rawApi.DelayMs = config.Downloader.DownloadDelayMs;
         using var api = new CachedTrackmaniaApi(rawApi, fs, dateTime, scriptDir, config.Cache);
         var net = new RealNetworkService(HttpClient);

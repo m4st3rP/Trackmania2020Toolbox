@@ -125,7 +125,7 @@ public partial class MainWindow : Window
         _config = _configService.LoadConfig(scriptDir);
 
         var dateTime = new RealDateTime();
-        var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent);
+        var rawApi = new TrackmaniaApiWrapper(TrackmaniaCLI.HttpClient, TrackmaniaCLI.UserAgent, console);
         rawApi.DelayMs = _config.Downloader.DownloadDelayMs;
         var api = new CachedTrackmaniaApi(rawApi, _fs, dateTime, scriptDir, _config.Cache);
         var net = new RealNetworkService(TrackmaniaCLI.HttpClient);
