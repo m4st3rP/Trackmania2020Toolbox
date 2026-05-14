@@ -331,41 +331,62 @@ public partial class InputParser(IConsole console) : IInputParser
     {
         if (string.IsNullOrWhiteSpace(input)) return;
 
-        const string placeholder = "|RANGE|";
-        string normalized = RangeSeparatorRegex().Replace(input, placeholder);
+        var inputSpan = input.AsSpan();
+        int start = 0;
 
-        var parts = normalized.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var partStr in parts)
+        while (start < inputSpan.Length)
         {
-            if (partStr.Contains(placeholder))
+            int nextSeparator = -1;
+            for (int i = start; i < inputSpan.Length; i++)
             {
-                var rangeParts = partStr.Split(placeholder);
-                action(rangeParts[0].Trim(), rangeParts[1].Trim());
-                continue;
-            }
+                char c = inputSpan[i];
+                bool isSep = false;
+                foreach (var s in separators) if (c == s) { isSep = true; break; }
 
-            var part = partStr.AsSpan().Trim();
-            if (part.IsEmpty) continue;
-
-            int dashIdx = -1;
-            for (int i = 0; i < part.Length; i++)
-            {
-                if (part[i] == '-')
+                if (isSep)
                 {
-                    if (IsDateSeparator(part, i)) continue;
-                    dashIdx = i;
+                    if (c == ' ')
+                    {
+                        // Check if this space is part of a range: " -" or "- "
+                        bool partOfRange = false;
+                        if (i + 1 < inputSpan.Length && inputSpan[i + 1] == '-') partOfRange = true;
+                        if (i > start && inputSpan[i - 1] == '-') partOfRange = true;
+
+                        if (partOfRange) continue;
+                    }
+                    nextSeparator = i;
                     break;
                 }
             }
 
-            if (dashIdx != -1 && dashIdx < part.Length - 1)
+            int length = nextSeparator == -1 ? inputSpan.Length - start : nextSeparator - start;
+            var part = inputSpan.Slice(start, length).Trim();
+
+            if (!part.IsEmpty)
             {
-                action(part[..dashIdx].ToString(), part[(dashIdx + 1)..].ToString());
+                int dashIdx = -1;
+                for (int i = 0; i < part.Length; i++)
+                {
+                    if (part[i] == '-')
+                    {
+                        if (IsDateSeparator(part, i)) continue;
+                        dashIdx = i;
+                        break;
+                    }
+                }
+
+                if (dashIdx != -1 && dashIdx < part.Length - 1)
+                {
+                    action(part[..dashIdx].Trim().ToString(), part[(dashIdx + 1)..].Trim().ToString());
+                }
+                else
+                {
+                    action(part.ToString(), null);
+                }
             }
-            else
-            {
-                action(part.ToString(), null);
-            }
+
+            if (nextSeparator == -1) break;
+            start = nextSeparator + 1;
         }
     }
 

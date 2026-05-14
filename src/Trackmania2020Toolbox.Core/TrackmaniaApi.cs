@@ -6,7 +6,7 @@ using TmEssentials;
 
 namespace Trackmania2020Toolbox;
 
-public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITrackmaniaApi
+public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent, IConsole console) : ITrackmaniaApi
 {
     private readonly TrackmaniaIO _api = new(httpClient, userAgent);
     private readonly MX _tmx = new(httpClient, TmxSite.Trackmania);
@@ -29,7 +29,11 @@ public class TrackmaniaApiWrapper(HttpClient httpClient, string userAgent) : ITr
             if (elapsedTicks < minIntervalTicks)
             {
                 int delay = (int)((minIntervalTicks - elapsedTicks) / TimeSpan.TicksPerMillisecond);
-                if (delay > 0) await Task.Delay(delay);
+                if (delay > 0)
+                {
+                    if (delay > 500) console.WriteLine("Waiting for rate limit...");
+                    await Task.Delay(delay);
+                }
             }
 
             _lastRequestTimestamp = Stopwatch.GetTimestamp();
