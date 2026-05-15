@@ -63,12 +63,19 @@ public partial class InputParser(IConsole console) : IInputParser
             if (e == null)
             {
                 if (int.TryParse(s, out var num)) result.Add(num);
+                else if (!string.IsNullOrWhiteSpace(s)) console.WriteLine($"Error: Could not parse number '{s}'.");
             }
             else
             {
                 if (int.TryParse(s, out var start) && int.TryParse(e, out var end))
                 {
-                    for (var i = Math.Min(start, end); i <= Math.Max(start, end); i++) result.Add(i);
+                    int min = Math.Min(start, end);
+                    int max = Math.Max(start, end);
+                    for (int i = min; i <= max; i++) result.Add(i);
+                }
+                else
+                {
+                    console.WriteLine($"Error: Could not parse number range '{s}-{e}'.");
                 }
             }
         });
@@ -168,21 +175,26 @@ public partial class InputParser(IConsole console) : IInputParser
     public SeasonalRef? ParseSeasonalRef(string s)
     {
         s = s.Trim();
+        if (string.IsNullOrEmpty(s)) return null;
+
         var match = SeasonalRefRegex().Match(s);
         if (match.Success)
         {
             string season = match.Groups[1].Value;
-            int year = int.Parse(match.Groups[2].Value);
-            int? map = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : null;
-            int order = GetSeasonOrder(season);
-            return new SeasonalRef(year, order, map);
+            if (int.TryParse(match.Groups[2].Value, out int year))
+            {
+                int? map = match.Groups[3].Success && int.TryParse(match.Groups[3].Value, out int m) ? m : null;
+                int order = GetSeasonOrder(season);
+                return new SeasonalRef(year, order, map);
+            }
         }
+
         match = YearRegex().Match(s);
-        if (match.Success)
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int y))
         {
-            int year = int.Parse(match.Groups[1].Value);
-            return new SeasonalRef(year, 1);
+            return new SeasonalRef(y, 1);
         }
+
         return null;
     }
 
