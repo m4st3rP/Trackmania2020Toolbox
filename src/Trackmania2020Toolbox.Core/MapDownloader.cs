@@ -28,33 +28,26 @@ public class MapDownloader(IFileSystem fs, INetworkService net, IMapFixer fixer,
             var map = mapList[i];
             if (string.IsNullOrEmpty(map.FileUrl)) continue;
 
-            var fileName = (map.FileName ?? map.Name).Trim();
             var deformattedName = TextFormatter.Deformat(map.Name);
-            fileName = TextFormatter.Deformat(fileName);
+            var rawFileName = (map.FileName ?? map.Name).AsSpan().Trim();
+            var fileNameStr = TextFormatter.Deformat(rawFileName.ToString());
 
-            string extension = "";
-            if (fileName.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase))
+            string extension = ".Map.Gbx";
+            if (fileNameStr.EndsWith(".Map.Gbx", StringComparison.OrdinalIgnoreCase))
             {
-                extension = ".Map.Gbx";
-                fileName = fileName[..^8].Trim();
+                fileNameStr = fileNameStr[..^8].Trim();
             }
-            else if (fileName.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase))
+            else if (fileNameStr.EndsWith(".Gbx", StringComparison.OrdinalIgnoreCase))
             {
                 extension = ".Gbx";
-                fileName = fileName[..^4].Trim();
+                fileNameStr = fileNameStr[..^4].Trim();
             }
-            else
-            {
-                fileName = fileName.Trim();
-                extension = ".Map.Gbx";
-            }
-            fileName += extension;
 
-            fileName = PathUtilities.SanitizeString(fileName);
+            fileNameStr = PathUtilities.SanitizeString(fileNameStr + extension);
 
-            if (!string.IsNullOrEmpty(map.Prefix)) fileName = map.Prefix + fileName;
+            if (!string.IsNullOrEmpty(map.Prefix)) fileNameStr = map.Prefix + fileNameStr;
 
-            var filePath = Path.Combine(downloadDir, fileName);
+            var filePath = Path.Combine(downloadDir, fileNameStr);
             _console.Write($"[{i + 1}/{mapList.Count}] {deformattedName}... ");
 
             if (_fs.FileExists(filePath) && !config.App.ForceOverwrite)

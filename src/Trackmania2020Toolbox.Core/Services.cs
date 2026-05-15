@@ -103,36 +103,28 @@ public class RealBrowserService(IFileSystem fs) : IBrowserService
     {
         if (!_fs.DirectoryExists(directory)) return [];
 
-        var dirs = _fs.GetDirectories(directory)
-            .Select(Path.GetFileName)
-            .Where(name => string.IsNullOrEmpty(filter) || name!.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        bool hasFilter = !string.IsNullOrEmpty(filter);
 
-        var sortedDirs = descending ? dirs.OrderByDescending(d => d) : dirs.OrderBy(d => d);
+        var dirItems = _fs.GetDirectories(directory)
+            .Select(d => Path.GetFileName(d))
+            .Where(name => !hasFilter || name.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
-        var items = sortedDirs
-            .Select(name => new BrowserItem(name!, Path.Combine(directory, name!), true));
+        dirItems = descending ? dirItems.OrderByDescending(d => d) : dirItems.OrderBy(d => d);
 
-        var files = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
+        var items = dirItems.Select(name => new BrowserItem(name, Path.Combine(directory, name), true));
+
+        var fileItems = _fs.GetFiles(directory, "*.Map.Gbx", SearchOption.TopDirectoryOnly)
             .Select(f =>
             {
                 var fn = Path.GetFileName(f);
-                return (Path: f, FileName: fn, DisplayName: TextFormatter.Deformat(fn));
-            });
+                var dn = TextFormatter.Deformat(fn);
+                return (Path: f, FileName: fn, DisplayName: dn);
+            })
+            .Where(f => !hasFilter || f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) || f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
-        if (!string.IsNullOrEmpty(filter))
-        {
-            files = files.Where(f =>
-                f.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                f.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase));
-        }
+        fileItems = descending ? fileItems.OrderByDescending(f => f.DisplayName) : fileItems.OrderBy(f => f.DisplayName);
 
-        var sortedFiles = descending
-            ? files.OrderByDescending(f => f.DisplayName)
-            .Select(f => new BrowserItem(f.DisplayName, f.Path, false))
-            : files.OrderBy(f => f.DisplayName)
-            .Select(f => new BrowserItem(f.DisplayName, f.Path, false));
-
-        return items.Concat(sortedFiles).ToList();
+        return items.Concat(fileItems.Select(f => new BrowserItem(f.DisplayName, f.Path, false))).ToList();
     }
 }
 
